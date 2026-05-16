@@ -26,6 +26,7 @@ func ParseOutfmt6(r io.Reader) ([]Hit, error) {
 
 		subjectID := fields[1]
 		identity, _ := strconv.ParseFloat(fields[2], 64)
+		coverage, _ := strconv.ParseFloat(fields[3], 64)
 		evalue := fields[4]
 		bitscore, _ := strconv.ParseFloat(fields[5], 64)
 		qstart, _ := strconv.Atoi(fields[6])
@@ -34,10 +35,6 @@ func ParseOutfmt6(r io.Reader) ([]Hit, error) {
 		send, _ := strconv.Atoi(fields[9])
 		qseq := fields[10]
 		sseq := fields[11]
-
-		if len(fields) >= 4 {
-			_, _ = strconv.ParseFloat(fields[3], 64)
-		}
 
 		hsp := HSP{
 			QueryStart:   qstart,
@@ -53,6 +50,7 @@ func ParseOutfmt6(r io.Reader) ([]Hit, error) {
 			hit = &Hit{
 				SubjectID:  subjectID,
 				Identity:   identity,
+				Coverage:   coverage,
 				EValue:     evalue,
 				TotalScore: bitscore,
 				Alignments: make([]HSP, 0),
@@ -63,6 +61,7 @@ func ParseOutfmt6(r io.Reader) ([]Hit, error) {
 		if bitscore > hit.TotalScore {
 			hit.TotalScore = bitscore
 			hit.Identity = identity
+			hit.Coverage = coverage
 			hit.EValue = evalue
 		}
 
