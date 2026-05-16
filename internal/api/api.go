@@ -39,6 +39,7 @@ func NewServer(cfg *config.Config, pool *worker.Pool, dbMgr *config.DatabaseMana
 	s.router.Use(custommw.Logger)
 	s.router.Use(chimw.Recoverer)
 	s.router.Use(custommw.CORS)
+	s.router.Use(custommw.NewRateLimiter(100, 120).Middleware)
 
 	s.router.Get("/health", s.handleHealth)
 	s.router.Get("/api/v1/databases", s.handleDatabases)
@@ -221,32 +222,33 @@ func (s *Server) handleJobEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
+	subCh := job.Subscribe()
+	defer job.Unsubscribe(subCh)
 
 	ctx := r.Context()
+
+	send := func() bool {
+		snap := job.Snapshot()
+		data, err := json.Marshal(snap)
+		if err != nil {
+			return false
+		}
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+		status := snap.Status
+		return status != worker.StatusSuccess && status != worker.StatusFailed && status != worker.StatusCancelled
+	}
+
+	if !send() {
+		return
+	}
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			_, err := s.pool.Get(jobID)
-			if err != nil {
-				return
-			}
-
-			snap := job.Snapshot()
-			data, err := json.Marshal(snap)
-			if err != nil {
-				return
-			}
-
-			fmt.Fprintf(w, "data: %s\n\n", data)
-			flusher.Flush()
-
-			status := snap.Status
-			if status == worker.StatusSuccess || status == worker.StatusFailed || status == worker.StatusCancelled {
+		case <-subCh:
+			if !send() {
 				return
 			}
 		}

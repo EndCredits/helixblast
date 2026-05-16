@@ -35,9 +35,10 @@ type Job struct {
 	Error          string            `json:"error,omitempty"`
 	Progress       string            `json:"progress,omitempty"`
 
-	mu        sync.RWMutex
+	mu         sync.RWMutex
 	cancelling atomic.Bool
-	cancel    context.CancelFunc
+	cancel     context.CancelFunc
+	subs       map[chan struct{}]struct{}
 }
 
 func NewJobID() string {
@@ -57,14 +58,44 @@ func NewJob(program, database string, fasta string, advanced map[string]string) 
 		AdvancedParams: advanced,
 		CreatedAt:      now,
 		UpdatedAt:      now,
+		subs:           make(map[chan struct{}]struct{}),
+	}
+}
+
+func (j *Job) Subscribe() chan struct{} {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	ch := make(chan struct{}, 1)
+	j.subs[ch] = struct{}{}
+	return ch
+}
+
+func (j *Job) Unsubscribe(ch chan struct{}) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	delete(j.subs, ch)
+}
+
+func (j *Job) notify() {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	for ch := range j.subs {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
 	}
 }
 
 func (j *Job) SetStatus(s Status) {
 	j.mu.Lock()
-	defer j.mu.Unlock()
+	old := j.Status
 	j.Status = s
 	j.UpdatedAt = time.Now()
+	j.mu.Unlock()
+	if old != s {
+		j.notify()
+	}
 }
 
 func (j *Job) GetStatus() Status {
@@ -75,23 +106,26 @@ func (j *Job) GetStatus() Status {
 
 func (j *Job) SetProgress(msg string) {
 	j.mu.Lock()
-	defer j.mu.Unlock()
 	j.Progress = msg
 	j.UpdatedAt = time.Now()
+	j.mu.Unlock()
+	j.notify()
 }
 
 func (j *Job) SetError(err string) {
 	j.mu.Lock()
-	defer j.mu.Unlock()
 	j.Error = err
 	j.UpdatedAt = time.Now()
+	j.mu.Unlock()
+	j.notify()
 }
 
 func (j *Job) SetResult(data json.RawMessage) {
 	j.mu.Lock()
-	defer j.mu.Unlock()
 	j.Result = data
 	j.UpdatedAt = time.Now()
+	j.mu.Unlock()
+	j.notify()
 }
 
 func (j *Job) SetCancel(fn context.CancelFunc) {

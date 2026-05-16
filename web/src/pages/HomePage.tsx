@@ -16,7 +16,7 @@ import {
   useHealth,
   useDatabases,
   useJobs,
-  useJob,
+  useJobSSE,
   useCreateJob,
   useCancelJob,
 } from '../hooks/useJobs'
@@ -55,7 +55,7 @@ export default function HomePage() {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [selectedHit, setSelectedHit] = useState<Hit | null>(null)
 
-  const { data: jobDetail, isLoading: jobLoading } = useJob(selectedJobId)
+  const { data: jobDetail, isLoading: jobLoading } = useJobSSE(selectedJobId)
 
   const fastaError = useMemo(() => {
     if (!fasta.trim()) return null

@@ -14,7 +14,7 @@ s3:
 
 blast:
   path: ""
-  max_jobs: 20
+  max_jobs: 5
   cpu_per_job: 2
 
 database:
