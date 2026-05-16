@@ -14,13 +14,14 @@ import (
 type ExecFunc func(ctx context.Context, job *Job) ([]blast.Hit, error)
 
 type Pool struct {
-	mu       sync.RWMutex
-	jobs     map[string]*Job
-	jobCh    chan *Job
-	maxJobs  int
-	execFn   ExecFunc
-	stopCh   chan struct{}
-	doneCh   chan struct{}
+	mu      sync.RWMutex
+	jobs    map[string]*Job
+	jobCh   chan *Job
+	maxJobs int
+	execFn  ExecFunc
+	wg      sync.WaitGroup
+	stopCh  chan struct{}
+	doneCh  chan struct{}
 }
 
 func NewPool(maxConcurrent int, maxQueue int, execFn ExecFunc) *Pool {
@@ -34,6 +35,7 @@ func NewPool(maxConcurrent int, maxQueue int, execFn ExecFunc) *Pool {
 	}
 
 	for i := 0; i < maxConcurrent; i++ {
+		p.wg.Add(1)
 		go p.worker(i)
 	}
 
@@ -105,8 +107,31 @@ func (p *Pool) Cancel(id string) error {
 
 func (p *Pool) Stop() {
 	close(p.stopCh)
+
+	p.mu.Lock()
+	for _, job := range p.jobs {
+		status := job.GetStatus()
+		if status == StatusRunning || status == StatusQueued || status == StatusPending {
+			job.Cancel()
+		}
+	}
+	p.mu.Unlock()
+
 	close(p.jobCh)
-	<-p.doneCh
+
+	shutdownDone := make(chan struct{})
+	go func() {
+		p.wg.Wait()
+		close(shutdownDone)
+	}()
+
+	select {
+	case <-shutdownDone:
+	case <-time.After(30 * time.Second):
+		log.Printf("[helixblast] Shutdown timeout: forcing exit (some BLAST jobs may still be running)")
+	}
+
+	close(p.doneCh)
 }
 
 func (p *Pool) queuePosUnsafe(job *Job) int {
@@ -140,7 +165,20 @@ func (p *Pool) updateQueuePositions() {
 }
 
 func (p *Pool) worker(id int) {
-	for job := range p.jobCh {
+	defer p.wg.Done()
+
+	for {
+		select {
+		case <-p.stopCh:
+			return
+		default:
+		}
+
+		job, ok := <-p.jobCh
+		if !ok {
+			return
+		}
+
 		if job.IsCancelling() {
 			job.SetStatus(StatusCancelled)
 			p.updateQueuePositions()
@@ -154,9 +192,10 @@ func (p *Pool) worker(id int) {
 
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 		job.SetCancel(cancel)
-		defer cancel()
 
 		hits, err := p.execFn(ctx, job)
+		cancel()
+
 		if err != nil {
 			log.Printf("[helixblast] Job %s failed: %v", job.ID, err)
 			job.SetStatus(StatusFailed)

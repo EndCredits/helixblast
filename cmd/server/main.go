@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -132,18 +133,31 @@ func main() {
 
 	srv := api.NewServer(cfg, pool, dm)
 
+	httpServer := &http.Server{
+		Addr:    srv.ListenAddr(),
+		Handler: srv,
+	}
+
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
 		<-sigCh
 		logger.Println("Shutting down...")
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			logger.Printf("HTTP shutdown error: %v", err)
+		}
+
 		pool.Stop()
+		logger.Println("Shutdown complete")
 		os.Exit(0)
 	}()
 
 	logger.Printf("Listening on :%d", cfg.Server.Port)
-	if err := srv.Run(); err != nil {
+	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Fatalf("Server error: %v", err)
 	}
 }
