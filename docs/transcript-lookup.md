@@ -205,6 +205,26 @@ The genome scan covers 5kb upstream plus the full gene body. Five regions are de
 
 This design does a single genome scan instead of five separate ones. The Worker and local engine only extract one sequence range; the frontend does the slicing.
 
+## Spatial Search
+
+When a BLAST hit lands on a chromosome database (`is_chromosome_db: true`), HelixBLAST automatically resolves the genomic position to overlapping GFF3 features via `/api/v1/spatial`. The spatial index is built alongside the main GFF3 index:
+
+```json
+{
+  "spatial": {
+    "Chr01": [
+      { "start": 11401, "end": 11811, "id": "g1", "type": "gene" },
+      { "start": 11401, "end": 11811, "id": "g1.t1", "type": "mRNA" },
+      { "start": 22075, "end": 27453, "id": "g2", "type": "gene" }
+    ]
+  }
+}
+```
+
+Features are sorted by `start` position on each chromosome. The lookup finds all overlapping features plus the nearest upstream and downstream neighbors — so even intergenic hits show flanking genes with distance markers.
+
+This enables a complete workflow: BLAST a sequence → see where it hits on the chromosome → click "Lookup Region" or auto-resolve → see overlapping genes → click any gene/transcript/CDS ID → view its full sequence and exon structure.
+
 ## GFF3 coordinate conventions
 
 GFF3 uses 1-indexed, inclusive coordinates. A feature at 11401-11811 spans 411 bases (11811 - 11401 + 1). JavaScript's `slice()` is 0-indexed and exclusive on the end — the frontend adds `+1` to compensate.

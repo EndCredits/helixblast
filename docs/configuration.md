@@ -101,6 +101,7 @@ databases:
 | `path` | Yes | Absolute path to the BLAST database (the prefix before `.phr`/`.pin`/`.psq`) |
 | `description` | No | Displayed in the UI dropdown |
 | `last_updated` | No | Displayed in the UI |
+| `is_chromosome_db` | No | When `true`, automatically resolves BLAST hits to overlapping genes using the spatial index (`/api/v1/spatial`). Use for genome databases built from chromosome sequences |
 | `transcript` | No | Enables transcript lookup for this database |
 | `transcript.source` | No | For Worker mode: use this name as the `db` parameter instead of `name`. Allows protein and nucleotide BLAST databases to share one set of R2 FASTA files |
 

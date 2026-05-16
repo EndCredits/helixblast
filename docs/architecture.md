@@ -108,6 +108,20 @@ Graceful shutdown on SIGINT/SIGTERM:
 | UI | Ant Design 5 | Mature component library, form/table/tag/card |
 | Data fetching | @tanstack/react-query | Auto-polling, cache dedup, background GC |
 | State push | EventSource (SSE) | Server-push for job status, auto-reconnect |
+| Client storage | IndexedDB | Browser-local persistence (24h TTL), survives restarts |
+
+### Client-side persistence
+
+BLAST results are stored in the browser's IndexedDB (database `helixblast`, store `cache`). The server holds results only until the client acknowledges receipt via SSE or polling. At that point, `ClearResult()` is called on the server-side job to free memory. The client-side entry includes a `created_at` timestamp — entries older than 24 hours are automatically purged on next page load.
+
+This means:
+- Server memory is only consumed by active (queued/running) jobs
+- Refreshing the page or restarting the server does not lose previously viewed results
+- Each browser sees only its own IndexedDB entries — no user tracking or server-side persistence
+
+### Spatial search
+
+When a BLAST database uses chromosome sequences (`is_chromosome_db: true`), clicking a hit triggers `/api/v1/spatial` which queries a pre-built interval index in the GFF3 data. The index maps each chromosome to a sorted array of features (gene, mRNA, CDS, exon). Overlapping features and the nearest upstream/downstream genes are resolved in a single linear scan. Clicking any gene/transcript/CDS ID jumps to Transcript Lookup to view the full sequence.
 
 ### States managed without a state library
 

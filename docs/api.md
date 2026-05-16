@@ -184,3 +184,30 @@ The `sequence` field contains the genome scan from `scan_start` to `scan_end` (5
 - **Gene Body**: `seq[(start - scan_start) : ]`
 - **mRNA**: exons spliced from gene body
 - **CDS**: coding regions spliced from gene body
+
+## Spatial Lookup
+
+```
+GET /api/v1/spatial?db=<name>&chr=<chr>&pos=<pos>
+→ {
+    "chromosome": "Chr01",
+    "position": 17146628,
+    "features": [
+      { "start": 17146608, "end": 17148002, "id": "g1065", "type": "gene" },
+      { "start": 17146608, "end": 17148002, "id": "g1065.t1", "type": "mRNA" },
+      { "start": 17146608, "end": 17148002, "id": "g1065.t1.CDS1", "type": "CDS" }
+    ],
+    "upstream": { "start": 11401, "end": 11811, "id": "g1", "type": "gene" },
+    "downstream": { "start": 22075, "end": 27453, "id": "g2", "type": "gene" }
+  }
+```
+
+Finds all GFF3 features (gene, mRNA, CDS, exon) overlapping a genomic position, plus the nearest upstream and downstream features for orientation. Returns `404` if the chromosome is not in the spatial index.
+
+Set `is_chromosome_db: true` in `databases.yaml` to enable automatic spatial lookup when viewing BLAST alignment results.
+
+## Offline Cache
+
+BLAST results are persisted client-side in the browser's IndexedDB (database `helixblast`, store `cache`). On page load, cached jobs are restored and merged with the server's active job list. Each cached entry expires after 24 hours — expired entries are deleted on next page load.
+
+Jobs marked `_cached` appear with a `local` tag in the UI. No cookies, no server-side data persistence — results live only in the user's own browser.

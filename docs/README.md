@@ -4,6 +4,8 @@ Light, modern BLAST web service — single binary, zero external dependencies.
 
 - **BLAST Search**: Web UI for NCBI BLAST+, with job queue, SSE streaming, alignment viewer
 - **Transcript Lookup**: GFF3-based gene/transcript/CDS coordinate resolution and sequence extraction, backed by local FASTA or Cloudflare Worker + R2
+- **Spatial Search**: Chromosome interval lookup — click a BLAST hit to see overlapping genes, flanking features
+- **Offline cache**: BLAST results persist in browser IndexedDB across restarts (24h TTL)
 
 ```
 ┌─ HelixBLAST Server (local) ─────────────────────────────────────┐
