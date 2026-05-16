@@ -15,7 +15,14 @@ export function useJobs() {
   return useQuery({
     queryKey: ['jobs'],
     queryFn: api.fetchJobs,
-    refetchInterval: 3000,
+    refetchInterval: (query) => {
+      const jobs = query.state.data
+      if (!jobs || jobs.length === 0) return false
+      const hasActive = jobs.some(
+        (j) => !['success', 'failed', 'cancelled'].includes(j.status),
+      )
+      return hasActive ? 3000 : false
+    },
   })
 }
 
