@@ -10,6 +10,7 @@ import {
   Divider,
   Button,
   Space,
+  Tag,
   message,
 } from 'antd'
 import {
@@ -55,7 +56,7 @@ export default function HomePage() {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [selectedHit, setSelectedHit] = useState<Hit | null>(null)
 
-  const { data: jobDetail, isLoading: jobLoading } = useJobSSE(selectedJobId)
+  const { data: jobDetail, isLoading: jobLoading, sseState } = useJobSSE(selectedJobId)
 
   const fastaError = useMemo(() => {
     if (!fasta.trim()) return null
@@ -182,11 +183,16 @@ export default function HomePage() {
                 </Space>
               }
               extra={
-                selectedJobId && (
-                  <Button size="small" onClick={() => { setSelectedJobId(null); setSelectedHit(null) }}>
-                    Close
-                  </Button>
-                )
+                <Space>
+                  {selectedJobId && sseState !== 'connected' && sseState !== 'disconnected' && (
+                    <Tag color="warning">{sseState === 'reconnecting' ? 'Reconnecting...' : 'Connecting...'}</Tag>
+                  )}
+                  {selectedJobId && (
+                    <Button size="small" onClick={() => { setSelectedJobId(null); setSelectedHit(null) }}>
+                      Close
+                    </Button>
+                  )}
+                </Space>
               }
             >
               {!selectedJobId && (
