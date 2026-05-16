@@ -1,0 +1,21 @@
+server:
+  port: 8080
+
+storage:
+  type: local
+  data_dir: ./data
+  result_ttl_hours: 24
+
+s3:
+  endpoint: ""
+  bucket: ""
+  access_key: ""
+  secret_key: ""
+
+blast:
+  path: ""
+  max_jobs: 20
+  cpu_per_job: 2
+
+database:
+  config_path: ./databases.yaml

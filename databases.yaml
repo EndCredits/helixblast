@@ -1,0 +1,6 @@
+databases:
+  # - name: "nt"
+  #   type: "nucleotide"
+  #   path: "/path/to/blast/db/nt"
+  #   description: "NCBI Nucleotide (2026-05)"
+  #   last_updated: "2026-05-10"
