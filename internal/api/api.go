@@ -198,6 +198,9 @@ func (s *Server) handleJobGet(w http.ResponseWriter, r *http.Request) {
 
 	snap := job.Snapshot()
 	jsonResponse(w, http.StatusOK, snap)
+	if snap.Status == worker.StatusSuccess || snap.Status == worker.StatusFailed || snap.Status == worker.StatusCancelled {
+		job.ClearResult()
+	}
 }
 
 func (s *Server) handleJobCancel(w http.ResponseWriter, r *http.Request) {

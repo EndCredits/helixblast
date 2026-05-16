@@ -6,6 +6,7 @@ helixblast
 web/node_modules/
 web/dist/
 web/.vite/
+web/tsconfig.tsbuildinfo
 
 # Embedded frontend build artifacts (generated on build)
 embed/assets/

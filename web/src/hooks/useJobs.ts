@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import * as api from '../api/client'
+import { saveJobMeta, saveJobFull, loadCachedJob } from '../lib/db'
 import type { JobDetail } from '../api/client'
 
 export function useHealth() {
@@ -12,7 +13,7 @@ export function useDatabases() {
 }
 
 export function useJobs() {
-  return useQuery({
+  const q = useQuery({
     queryKey: ['jobs'],
     queryFn: api.fetchJobs,
     refetchInterval: (query) => {
@@ -24,6 +25,18 @@ export function useJobs() {
       return hasActive ? 3000 : false
     },
   })
+
+  useEffect(() => {
+    const jobs = q.data
+    if (!jobs) return
+    for (const j of jobs) {
+      if (['success', 'failed', 'cancelled'].includes(j.status)) {
+        saveJobMeta(j).catch(() => {})
+      }
+    }
+  }, [q.data])
+
+  return q
 }
 
 export function useJobSSE(jobId: string | null) {
@@ -55,6 +68,12 @@ export function useJobSSE(jobId: string | null) {
   useEffect(() => {
     if (!jobId) return
 
+    const existing = qc.getQueryData(['job', jobId]) as (JobDetail & { _cached?: boolean }) | undefined
+    if (existing && ['success', 'failed', 'cancelled'].includes(existing.status)) {
+      if (existing.result) { setSseState('disconnected'); return }
+      if (existing._cached) { setSseState('disconnected'); return }
+    }
+
     retryCountRef.current = 0
     doneRef.current = false
     setSseState('connecting')
@@ -79,6 +98,7 @@ export function useJobSSE(jobId: string | null) {
             stopAll(true)
             setSseState('disconnected')
             qc.invalidateQueries({ queryKey: ['jobs'] })
+            saveJobFull(data).catch(() => {})
           }
         } catch {}
       }
@@ -144,8 +164,10 @@ export function useJobSSE(jobId: string | null) {
   return {
     ...useQuery<JobDetail | null>({
       queryKey: ['job', jobId],
-      queryFn: () => {
+      queryFn: async () => {
         if (!jobId) return null
+        const cached = await loadCachedJob(jobId).catch(() => null)
+        if (cached) return cached as JobDetail
         return api.fetchJob(jobId)
       },
       enabled: !!jobId,

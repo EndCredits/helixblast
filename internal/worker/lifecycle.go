@@ -128,6 +128,12 @@ func (j *Job) SetResult(data json.RawMessage) {
 	j.notify()
 }
 
+func (j *Job) ClearResult() {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.Result = nil
+}
+
 func (j *Job) SetCancel(fn context.CancelFunc) {
 	j.mu.Lock()
 	defer j.mu.Unlock()

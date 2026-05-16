@@ -31,8 +31,9 @@ import ParamPanel from '../components/ParamPanel'
 import JobCard from '../components/JobCard'
 import ResultsTable from '../components/ResultsTable'
 import AlignmentView from '../components/AlignmentView'
-import type { Hit, BlastResult, TranscriptResult, SpatialResult } from '../api/client'
+import type { Hit, BlastResult, TranscriptResult, SpatialResult, JobItem } from '../api/client'
 import { lookupTranscript, fetchSpatial } from '../api/client'
+import { loadJobs } from '../lib/db'
 
 const { Content } = Layout
 const { Title, Text } = Typography
@@ -69,13 +70,18 @@ export default function HomePage() {
   const [spatialLoading, setSpatialLoading] = useState(false)
   const [spatialResult, setSpatialResult] = useState<SpatialResult | null>(null)
   const spatialRef = useRef<HTMLDivElement>(null)
+  const [savedJobs, setSavedJobs] = useState<JobItem[]>([])
 
-  const currentDB = databases.find((d) => d.name === database)
+  useEffect(() => {
+    loadJobs().then(setSavedJobs).catch(() => {})
+  }, [])
 
   const resultsRef = useRef<HTMLDivElement>(null)
   const alignmentRef = useRef<HTMLDivElement>(null)
 
   const { data: jobDetail, isLoading: jobLoading, sseState } = useJobSSE(selectedJobId)
+
+  const currentDB = databases.find((d) => d.name === (jobDetail?.database || database))
 
   const fastaError = useMemo(() => {
     if (!fasta.trim()) return null
@@ -168,6 +174,9 @@ export default function HomePage() {
       message.error('Please select a database')
       return
     }
+    if (id) {
+      message.loading({ content: `Looking up ${tid} ...`, key: 'tx-lookup', duration: 0 })
+    }
     setTranscriptLoading(true)
     try {
       const result = await lookupTranscript(lookupDB, tid)
@@ -179,12 +188,12 @@ export default function HomePage() {
         setSelectedHit(null)
       }
       setSpatialResult(null)
-      message.success(`Found: ${result.chromosome}:${result.start}-${result.end} (${result.strand})`)
+      message.success({ content: `Found: ${result.chromosome}:${result.start}-${result.end} (${result.strand})`, key: 'tx-lookup' })
       setTimeout(() => {
         resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
       }, 100)
     } catch (e: any) {
-      message.error(e.message || 'Transcript lookup failed')
+      message.error({ content: e.message || 'Transcript lookup failed', key: 'tx-lookup' })
     } finally {
       setTranscriptLoading(false)
     }
@@ -220,6 +229,20 @@ export default function HomePage() {
 
   const jobResult = jobDetail?.result as BlastResult | null
   const hits = jobResult?.results || []
+
+  const mergedJobs = useMemo(() => {
+    const serverIds = new Set(jobs.map((j) => j.job_id))
+    const cachedIds = new Set(savedJobs.map((j) => j.job_id))
+    const all = jobs.map((j) =>
+      cachedIds.has(j.job_id) ? { ...j, _cached: true } : j,
+    )
+    for (const sj of savedJobs) {
+      if (!serverIds.has(sj.job_id)) {
+        all.push(sj)
+      }
+    }
+    return all
+  }, [jobs, savedJobs])
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -314,18 +337,22 @@ export default function HomePage() {
               title={<Title level={5} style={{ margin: 0 }}>Jobs</Title>}
               style={{ marginBottom: 24 }}
             >
-              {jobs.length === 0 ? (
+              {mergedJobs.length === 0 ? (
                 <Text type="secondary">No jobs submitted yet</Text>
               ) : (
                 <Space direction="vertical" style={{ width: '100%' }} size="small">
-                  {jobs.map((job) => (
-                    <JobCard
-                      key={job.job_id}
-                      job={job}
-                      selected={selectedJobId === job.job_id}
-                      onSelect={handleSelectJob}
-                      onCancel={handleCancel}
-                    />
+                  {mergedJobs.map((job) => (
+                    <div key={job.job_id}>
+                      {(job as any)._cached && (
+                        <Tag color="default" style={{ marginBottom: 4, fontSize: 10 }}>local</Tag>
+                      )}
+                      <JobCard
+                        job={job}
+                        selected={selectedJobId === job.job_id}
+                        onSelect={handleSelectJob}
+                        onCancel={handleCancel}
+                      />
+                    </div>
                   ))}
                 </Space>
               )}
@@ -380,6 +407,9 @@ export default function HomePage() {
                         </Space>
                       </Card>
                     ))}
+                    {spatialResult.features.length > 0 && (
+                      <Text type="secondary" style={{ fontSize: 11 }}>Click an ID to look up transcript / CDS sequence</Text>
+                    )}
                     {spatialResult.upstream && (
                       <Card key={spatialResult.upstream.id} size="small">
                         <Space>
@@ -581,8 +611,11 @@ export default function HomePage() {
                                       <Text type="secondary">({f.start}-{f.end})</Text>
                                     </Space>
                                   </Card>
-                                ))}
-                                {spatialResult.upstream && (
+                                 ))}
+                                 {spatialResult.features.length > 0 && (
+                                   <Text type="secondary" style={{ fontSize: 11 }}>Click an ID to look up transcript / CDS sequence</Text>
+                                 )}
+                                 {spatialResult.upstream && (
                                   <Card key={spatialResult.upstream.id} size="small">
                                     <Space>
                                       <Tag>↑ {spatialResult.position - spatialResult.upstream.end} bp</Tag>
