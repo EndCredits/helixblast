@@ -297,7 +297,7 @@ func (s *Server) handleTranscriptLookup(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if result.Sequence == "" && s.config.Database.WorkerURL != "" && dbEntry.Transcript.FastaFile == "" && dbEntry.Transcript.FastaDir == "" {
-		seq, err := s.fetchSequenceFromWorker(result)
+		seq, err := s.fetchSequenceFromWorker(dbEntry, result)
 		if err != nil {
 			jsonError(w, http.StatusBadGateway, fmt.Sprintf("worker sequence fetch failed: %v", err))
 			return
@@ -313,10 +313,15 @@ func (s *Server) handleTranscriptLookup(w http.ResponseWriter, r *http.Request) 
 	jsonResponse(w, http.StatusOK, result)
 }
 
-func (s *Server) fetchSequenceFromWorker(res *transcript.Result) (string, error) {
+func (s *Server) fetchSequenceFromWorker(dbEntry *config.DatabaseEntry, res *transcript.Result) (string, error) {
 	scanStart := res.Start - 5000
 	if scanStart < 1 {
 		scanStart = 1
+	}
+
+	dbName := dbEntry.Name
+	if dbEntry.Transcript.Source != "" {
+		dbName = dbEntry.Transcript.Source
 	}
 
 	u, err := url.Parse(fmt.Sprintf("%s/sequence", s.config.Database.WorkerURL))
@@ -324,7 +329,7 @@ func (s *Server) fetchSequenceFromWorker(res *transcript.Result) (string, error)
 		return "", err
 	}
 	q := u.Query()
-	q.Set("db", res.Database)
+	q.Set("db", dbName)
 	q.Set("chr", res.Chromosome)
 	q.Set("start", fmt.Sprintf("%d", scanStart))
 	q.Set("end", fmt.Sprintf("%d", res.End))

@@ -24,6 +24,7 @@ type TranscriptConfig struct {
 	IndexPath string `yaml:"index_path"`
 	FastaDir  string `yaml:"fasta_dir"`
 	FastaFile string `yaml:"fasta_file"`
+	Source    string `yaml:"source"`
 }
 
 type DatabaseList struct {

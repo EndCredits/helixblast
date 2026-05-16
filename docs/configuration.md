@@ -102,6 +102,7 @@ databases:
 | `description` | No | Displayed in the UI dropdown |
 | `last_updated` | No | Displayed in the UI |
 | `transcript` | No | Enables transcript lookup for this database |
+| `transcript.source` | No | For Worker mode: use this name as the `db` parameter instead of `name`. Allows protein and nucleotide BLAST databases to share one set of R2 FASTA files |
 
 ### transcript section
 
@@ -110,15 +111,27 @@ databases:
 | `index_path` | Path to the GFF3 preprocessed index. Supports `.json` and `.json.gz` (auto-detected) |
 | `fasta_dir` | Directory with per-chromosome FASTA files (`Chr01.fa`, `Chr02.fa`, ...). Tried first |
 | `fasta_file` | Single multi-FASTA file containing all chromosomes. Fallback if `fasta_dir` chromosome not found |
+| `source` | For Worker mode: if protein and nucleotide BLAST DBs share one genome, set this to a common name so the Worker looks in a single R2 directory |
 
-The `transcript` section enables local (zero-network) transcript lookup. When present, HelixBLAST reads the index and FASTA files directly from disk using `f.Seek()` for O(1) chromosome positioning. The Cloudflare Worker is only used as a fallback when `worker_url` is set and no local FASTA is configured.
+Multi-database sharing:
 
 ```yaml
-# Recommended: use .json.gz for the index (~8MB vs ~40MB)
-transcript:
-  index_path: "/data/gff3/arachis-9102.index.json.gz"
-  fasta_dir: "/data/genome/arachis-9102/"
+databases:
+  - name: "arachis-9102-prot"
+    type: "protein"
+    path: "/path/to/blastdb/prot"
+    transcript:
+      index_path: "/data/gff3/arachis-9102.index.json.gz"
+      source: "arachis-9102"          # Worker: points to R2 fasta/arachis-9102/
+  - name: "arachis-9102-nuc"
+    type: "nucleotide"
+    path: "/path/to/blastdb/nuc"
+    transcript:
+      index_path: "/data/gff3/arachis-9102.index.json.gz"
+      source: "arachis-9102"          # same shared R2 directory
 ```
+
+When `source` is set, the Worker request uses that name instead of the BLAST DB name. This avoids uploading the same genome to two R2 directories.
 
 ### Hot reload
 
