@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import {
   Layout,
   Card,
@@ -51,10 +51,13 @@ export default function HomePage() {
   const [fasta, setFasta] = useState('')
   const [program, setProgram] = useState('blastn')
   const [database, setDatabase] = useState('')
-  const [template, setTemplate] = useState('')
+  const [template, setTemplate] = useState('megablast')
   const [advancedParams, setAdvancedParams] = useState('')
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [selectedHit, setSelectedHit] = useState<Hit | null>(null)
+
+  const resultsRef = useRef<HTMLDivElement>(null)
+  const alignmentRef = useRef<HTMLDivElement>(null)
 
   const { data: jobDetail, isLoading: jobLoading, sseState } = useJobSSE(selectedJobId)
 
@@ -62,6 +65,22 @@ export default function HomePage() {
     if (!fasta.trim()) return null
     return validateFASTA(fasta)
   }, [fasta])
+
+  const handleSelectJob = useCallback((id: string) => {
+    setSelectedJobId(id)
+    setSelectedHit(null)
+    setTimeout(() => {
+      resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 100)
+  }, [])
+
+  useEffect(() => {
+    if (selectedHit) {
+      setTimeout(() => {
+        alignmentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 100)
+    }
+  }, [selectedHit])
 
   const handleSubmit = useCallback(async () => {
     const err = validateFASTA(fasta)
@@ -151,10 +170,14 @@ export default function HomePage() {
                 />
               </Space>
             </Card>
+          </Col>
 
-            <Divider />
-
-            <Card title={<Title level={5} style={{ margin: 0 }}>Jobs</Title>}>
+          {/* Right: Jobs → Results */}
+          <Col xs={24} lg={14}>
+            <Card
+              title={<Title level={5} style={{ margin: 0 }}>Jobs</Title>}
+              style={{ marginBottom: 24 }}
+            >
               {jobs.length === 0 ? (
                 <Text type="secondary">No jobs submitted yet</Text>
               ) : (
@@ -164,78 +187,77 @@ export default function HomePage() {
                       key={job.job_id}
                       job={job}
                       selected={selectedJobId === job.job_id}
-                      onSelect={setSelectedJobId}
+                      onSelect={handleSelectJob}
                       onCancel={handleCancel}
                     />
                   ))}
                 </Space>
               )}
             </Card>
-          </Col>
 
-          {/* Right: Results */}
-          <Col xs={24} lg={14}>
-            <Card
-              title={
-                <Space>
-                  <Title level={5} style={{ margin: 0 }}>Results</Title>
-                  {selectedJobId && <Text code>{selectedJobId}</Text>}
-                </Space>
-              }
-              extra={
-                <Space>
-                  {selectedJobId && sseState !== 'connected' && sseState !== 'disconnected' && (
-                    <Tag color="warning">{sseState === 'reconnecting' ? 'Reconnecting...' : 'Connecting...'}</Tag>
-                  )}
-                  {selectedJobId && (
-                    <Button size="small" onClick={() => { setSelectedJobId(null); setSelectedHit(null) }}>
-                      Close
-                    </Button>
-                  )}
-                </Space>
-              }
-            >
-              {!selectedJobId && (
-                <Text type="secondary">Select a job from the list to view results</Text>
-              )}
+            <div ref={resultsRef}>
+              <Card
+                title={
+                  <Space>
+                    <Title level={5} style={{ margin: 0 }}>Results</Title>
+                    {selectedJobId && <Text code>{selectedJobId}</Text>}
+                  </Space>
+                }
+                extra={
+                  <Space>
+                    {selectedJobId && sseState !== 'connected' && sseState !== 'disconnected' && (
+                      <Tag color="warning">{sseState === 'reconnecting' ? 'Reconnecting...' : 'Connecting...'}</Tag>
+                    )}
+                    {selectedJobId && (
+                      <Button size="small" onClick={() => { setSelectedJobId(null); setSelectedHit(null) }}>
+                        Close
+                      </Button>
+                    )}
+                  </Space>
+                }
+              >
+                {!selectedJobId && (
+                  <Text type="secondary">Select a job from the list above to view results</Text>
+                )}
 
-              {jobLoading && <Spin />}
+                {jobLoading && <Spin />}
 
-              {jobDetail?.status === 'failed' && (
-                <Alert message="Job Failed" description={jobDetail.error} type="error" showIcon />
-              )}
+                {jobDetail?.status === 'failed' && (
+                  <Alert message="Job Failed" description={jobDetail.error} type="error" showIcon />
+                )}
 
-              {jobDetail?.status === 'cancelled' && (
-                <Alert message="Job Cancelled" type="warning" showIcon />
-              )}
+                {jobDetail?.status === 'cancelled' && (
+                  <Alert message="Job Cancelled" type="warning" showIcon />
+                )}
 
-              {jobDetail?.status === 'running' && (
-                <Alert message={jobDetail.progress || 'Running...'} type="info" showIcon icon={<Spin />} />
-              )}
+                {jobDetail?.status === 'running' && (
+                  <Alert message={jobDetail.progress || 'Running...'} type="info" showIcon icon={<Spin />} />
+                )}
 
-              {jobDetail?.status === 'queued' && (
-                <Alert
-                  message={`Queued (position #${jobDetail.queue_pos})`}
-                  type="info"
-                  showIcon
-                />
-              )}
-
-              {hits.length > 0 && (
-                <>
-                  <ResultsTable
-                    hits={hits}
-                    onSelectHit={setSelectedHit}
+                {jobDetail?.status === 'queued' && (
+                  <Alert
+                    message={`Queued (position #${jobDetail.queue_pos})`}
+                    type="info"
+                    showIcon
                   />
-                  {selectedHit && (
-                    <>
-                      <Divider />
-                      <AlignmentView hit={selectedHit} />
-                    </>
-                  )}
-                </>
-              )}
-            </Card>
+                )}
+
+                {hits.length > 0 && (
+                  <>
+                    <ResultsTable
+                      hits={hits}
+                      onSelectHit={setSelectedHit}
+                    />
+                    {selectedHit && (
+                      <div ref={alignmentRef}>
+                        <Divider />
+                        <AlignmentView hit={selectedHit} />
+                      </div>
+                    )}
+                  </>
+                )}
+              </Card>
+            </div>
           </Col>
         </Row>
       </Content>

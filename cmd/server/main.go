@@ -70,7 +70,23 @@ func main() {
 		logger.Printf("BLAST param whitelist: %d params", whitelist.Len())
 	}
 
+	dm, err := config.NewDatabaseManager(cfg.Database.ConfigPath)
+	if err != nil {
+		logger.Fatalf("Failed to load database config: %v", err)
+	}
+	defer dm.Stop()
+
+	dbs := dm.List()
+	logger.Printf("Loaded %d database(s)", len(dbs))
+	for _, db := range dbs {
+		logger.Printf("  - %s (%s): %s", db.Name, db.Type, db.Description)
+	}
+
 	execFn := func(ctx context.Context, job *worker.Job) ([]blast.Hit, error) {
+		dbEntry, err := dm.Lookup(job.Database)
+		if err != nil {
+			return nil, fmt.Errorf("resolve database: %w", err)
+		}
 		tmpFile, err := os.CreateTemp("", "helixblast-query-*.fa")
 		if err != nil {
 			return nil, fmt.Errorf("create temp file: %w", err)
@@ -100,7 +116,7 @@ func main() {
 		return blast.Execute(ctx, blast.ExecConfig{
 			BlastPath:      blastPath,
 			Program:        job.Program,
-			Database:       job.Database,
+			Database:       dbEntry.Path,
 			Query:          tmpFile.Name(),
 			NumThreads:     cfg.Blast.CPUPerJob,
 			MaxTargetSeqs:  5000,
@@ -114,18 +130,6 @@ func main() {
 
 	pool := worker.NewPool(resources.ActualConcurrent, cfg.Blast.MaxJobs, execFn)
 	logger.Printf("Worker pool: %d concurrent workers, %d max queue", resources.ActualConcurrent, cfg.Blast.MaxJobs)
-
-	dm, err := config.NewDatabaseManager(cfg.Database.ConfigPath)
-	if err != nil {
-		logger.Fatalf("Failed to load database config: %v", err)
-	}
-	defer dm.Stop()
-
-	dbs := dm.List()
-	logger.Printf("Loaded %d database(s)", len(dbs))
-	for _, db := range dbs {
-		logger.Printf("  - %s (%s): %s", db.Name, db.Type, db.Description)
-	}
 
 	jan := janitor.New(store, cfg.Storage.ResultTTLHours)
 	jan.Start()

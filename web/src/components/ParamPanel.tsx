@@ -18,14 +18,14 @@ interface Props {
 const taskTemplates: Record<string, { label: string; desc: string }[]> = {
   blastn: [
     { label: 'megablast', desc: 'Highly similar sequences' },
-    { label: 'dc-megablast', desc: 'Discontiguous megablast' },
     { label: 'blastn', desc: 'Somewhat similar sequences' },
+    { label: 'dc-megablast', desc: 'Discontiguous megablast' },
     { label: 'blastn-short', desc: 'Short sequences (<50 bp)' },
   ],
   blastp: [
     { label: 'blastp', desc: 'Standard protein BLAST' },
-    { label: 'blastp-short', desc: 'Short peptides (<30 aa)' },
     { label: 'blastp-fast', desc: 'Faster protein search' },
+    { label: 'blastp-short', desc: 'Short peptides (<30 aa)' },
   ],
   blastx: [
     { label: 'blastx', desc: 'Standard translated search' },
@@ -38,10 +38,10 @@ const taskTemplates: Record<string, { label: string; desc: string }[]> = {
 }
 
 const programs = [
-  { label: 'blastn (Nucleotide)', value: 'blastn' },
-  { label: 'blastp (Protein)', value: 'blastp' },
-  { label: 'blastx (Translated)', value: 'blastx' },
-  { label: 'tblastn (Translated)', value: 'tblastn' },
+  { label: 'blastn (Nucleotide → Nucleotide)', value: 'blastn' },
+  { label: 'blastp (Protein → Protein)', value: 'blastp' },
+  { label: 'blastx (Translated DNA → Protein)', value: 'blastx' },
+  { label: 'tblastn (Protein → Translated DNA)', value: 'tblastn' },
 ]
 
 export default function ParamPanel({
@@ -58,69 +58,66 @@ export default function ParamPanel({
   loading,
 }: Props) {
   const currentTasks = taskTemplates[program] || taskTemplates.blastn
+  const defaultTask = currentTasks[0]?.label || ''
 
   const handleProgramChange = (v: string) => {
     onProgramChange(v)
-    onTemplateChange('')
+    const tasks = taskTemplates[v] || taskTemplates.blastn
+    onTemplateChange(tasks[0]?.label || '')
   }
 
   return (
     <Form layout="vertical">
       <Space direction="vertical" style={{ width: '100%' }} size="middle">
-        <Space wrap>
-          <Form.Item label="Program" style={{ marginBottom: 0 }}>
-            <Select
-              value={program}
-              onChange={handleProgramChange}
-              options={programs}
-              style={{ width: 200 }}
-            />
-          </Form.Item>
-          <Form.Item label="Database" style={{ marginBottom: 0 }}>
-            <Select
-              value={database}
-              onChange={onDatabaseChange}
-              options={databases.map((db) => ({
-                label: `${db.name} (${db.type})`,
-                value: db.name,
-              }))}
-              style={{ width: 240 }}
-              notFoundContent="No databases configured"
-            />
-          </Form.Item>
-        </Space>
+        <Form.Item label="Program" style={{ marginBottom: 0 }}>
+          <Select
+            value={program}
+            onChange={handleProgramChange}
+            options={programs}
+            style={{ width: '100%' }}
+          />
+        </Form.Item>
+
+        <Form.Item label="Database" style={{ marginBottom: 0 }}>
+          <Select
+            value={database}
+            onChange={onDatabaseChange}
+            options={databases.map((db) => ({
+              label: `${db.name} (${db.type})`,
+              value: db.name,
+            }))}
+            style={{ width: '100%' }}
+            notFoundContent="No databases configured"
+          />
+        </Form.Item>
+
+        <Form.Item label="Task Preset" style={{ marginBottom: 0 }}>
+          <Select
+            value={template || defaultTask}
+            onChange={onTemplateChange}
+            placeholder="Select a task preset..."
+            options={currentTasks.map((t) => ({
+              label: t.label,
+              value: t.label,
+              desc: t.desc,
+            }))}
+            style={{ width: '100%' }}
+            optionRender={(option) => (
+              <Space>
+                <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                  {option.data.label}
+                </span>
+                <span style={{ color: '#888', fontSize: 12 }}>
+                  {option.data.desc}
+                </span>
+              </Space>
+            )}
+          />
+        </Form.Item>
 
         <Collapse
           ghost
           items={[
-            {
-              key: 'template',
-              label: 'Task Presets',
-              children: (
-                <Select
-                  value={template}
-                  onChange={onTemplateChange}
-                  allowClear
-                  placeholder="Select a task preset..."
-                  options={currentTasks.map((t) => ({
-                    label: t.label,
-                    value: t.label,
-                    desc: t.desc,
-                  }))}
-                  style={{ width: '100%' }}
-                  optionRender={(option) => (
-                    <Space>
-                      <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>
-                        {option.data.label}
-                      </span>
-                      <span style={{ color: '#888', fontSize: 12 }}>
-                        {option.data.desc}
-                      </span>
-                    </Space>
-                  )}
-                />
-              ),
-            },
             {
               key: 'advanced',
               label: 'Advanced Parameters',

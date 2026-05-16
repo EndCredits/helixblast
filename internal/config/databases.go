@@ -72,6 +72,15 @@ func (dm *DatabaseManager) List() []DatabaseEntry {
 	return out
 }
 
+func (dm *DatabaseManager) Lookup(name string) (*DatabaseEntry, error) {
+	for _, db := range dm.List() {
+		if db.Name == name {
+			return &db, nil
+		}
+	}
+	return nil, fmt.Errorf("database not found: %s", name)
+}
+
 func (dm *DatabaseManager) Stop() {
 	close(dm.stopCh)
 	if dm.watcher != nil {

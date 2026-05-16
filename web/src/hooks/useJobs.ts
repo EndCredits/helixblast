@@ -29,6 +29,7 @@ export function useJobs() {
 export function useJobSSE(jobId: string | null) {
   const qc = useQueryClient()
   const retryCountRef = useRef(0)
+  const doneRef = useRef(false)
   const maxRetries = 10
   const eventSourceRef = useRef<EventSource | null>(null)
   const fallbackTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -39,7 +40,8 @@ export function useJobSSE(jobId: string | null) {
     return Math.min(1000 * Math.pow(2, retry), 30000)
   }, [])
 
-  const stopAll = useCallback(() => {
+  const stopAll = useCallback((done = false) => {
+    if (done) doneRef.current = true
     if (eventSourceRef.current) {
       eventSourceRef.current.close()
       eventSourceRef.current = null
@@ -54,6 +56,7 @@ export function useJobSSE(jobId: string | null) {
     if (!jobId) return
 
     retryCountRef.current = 0
+    doneRef.current = false
     setSseState('connecting')
 
     const connect = () => {
@@ -73,7 +76,7 @@ export function useJobSSE(jobId: string | null) {
           qc.setQueryData(['job', jobId], data)
 
           if (['success', 'failed', 'cancelled'].includes(data.status)) {
-            stopAll()
+            stopAll(true)
             setSseState('disconnected')
             qc.invalidateQueries({ queryKey: ['jobs'] })
           }
@@ -83,6 +86,18 @@ export function useJobSSE(jobId: string | null) {
       es.onerror = () => {
         const readyState = es.readyState
         if (readyState === EventSource.CLOSED) {
+          if (doneRef.current) {
+            setSseState('disconnected')
+            return
+          }
+
+          const cached = qc.getQueryData(['job', jobId]) as JobDetail | undefined
+          if (cached && ['success', 'failed', 'cancelled'].includes(cached.status)) {
+            doneRef.current = true
+            setSseState('disconnected')
+            return
+          }
+
           retryCountRef.current++
           if (retryCountRef.current > maxRetries) {
             stopAll()
