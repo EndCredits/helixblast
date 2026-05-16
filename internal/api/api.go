@@ -13,11 +13,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
-	"helixblast/embed"
-	"helixblast/internal/config"
-	custommw "helixblast/internal/middleware"
-	"helixblast/internal/transcript"
-	"helixblast/internal/worker"
+	"github.com/EndCredits/helixblast/embed"
+	"github.com/EndCredits/helixblast/internal/config"
+	custommw "github.com/EndCredits/helixblast/internal/middleware"
+	"github.com/EndCredits/helixblast/internal/transcript"
+	"github.com/EndCredits/helixblast/internal/worker"
 )
 
 type Server struct {

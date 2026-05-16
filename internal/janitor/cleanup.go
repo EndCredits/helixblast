@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"helixblast/internal/storage"
+	"github.com/EndCredits/helixblast/internal/storage"
 )
 
 type Janitor struct {

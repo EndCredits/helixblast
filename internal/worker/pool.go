@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"helixblast/internal/blast"
+	"github.com/EndCredits/helixblast/internal/blast"
 )
 
 type ExecFunc func(ctx context.Context, job *Job) ([]blast.Hit, error)

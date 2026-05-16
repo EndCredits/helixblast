@@ -11,12 +11,12 @@ import (
 	"syscall"
 	"time"
 
-	"helixblast/internal/api"
-	"helixblast/internal/blast"
-	"helixblast/internal/config"
-	"helixblast/internal/janitor"
-	"helixblast/internal/storage"
-	"helixblast/internal/worker"
+	"github.com/EndCredits/helixblast/internal/api"
+	"github.com/EndCredits/helixblast/internal/blast"
+	"github.com/EndCredits/helixblast/internal/config"
+	"github.com/EndCredits/helixblast/internal/janitor"
+	"github.com/EndCredits/helixblast/internal/storage"
+	"github.com/EndCredits/helixblast/internal/worker"
 )
 
 func main() {
