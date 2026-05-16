@@ -4,3 +4,7 @@ databases:
   #   path: "/path/to/blast/db/nt"
   #   description: "NCBI Nucleotide (2026-05)"
   #   last_updated: "2026-05-10"
+    # transcript:
+    #   index_path: "/path/to/gff3-index.json"
+    #   fasta_dir: "/path/to/genome/fasta/"
+    #   fasta_file: "/path/to/genome/genome.fa"    # single multi-FASTA alternative

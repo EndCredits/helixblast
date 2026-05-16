@@ -1,45 +1,127 @@
-import { useMemo } from 'react'
-import { Typography, Space, Empty } from 'antd'
+import { useMemo, useCallback } from 'react'
+import { Typography, Space, Empty, Button } from 'antd'
+import { DownloadOutlined, SearchOutlined } from '@ant-design/icons'
 import type { Hit } from '../api/client'
 
 const { Text } = Typography
 
+const LINE_LEN = 60
+
 interface Props {
   hit: Hit | null
+  onLookupTranscript?: (id: string) => void
 }
 
-function buildAlignment(hit: Hit): { query: string; match: string; subject: string }[] {
-  const blocks: { query: string; match: string; subject: string }[] = []
+interface AlignmentBlock {
+  queryStart: number
+  queryEnd: number
+  subjectStart: number
+  subjectEnd: number
+  queryLines: string[]
+  matchLines: string[]
+  subjectLines: string[]
+  queryPositions: string[]
+  subjectPositions: string[]
+}
+
+function buildWrappedAlignment(hit: Hit): AlignmentBlock[] {
+  const blocks: AlignmentBlock[] = []
 
   for (const hsp of hit.alignments) {
-    let matchLine = ''
     const q = hsp.query_seq
     const s = hsp.subject_seq
+    const queryLines: string[] = []
+    const matchLines: string[] = []
+    const subjectLines: string[] = []
+    const queryPositions: string[] = []
+    const subjectPositions: string[] = []
 
-    for (let i = 0; i < q.length; i++) {
-      if (i < s.length && q[i].toUpperCase() === s[i].toUpperCase()) {
-        matchLine += '|'
-      } else if (i < s.length && q[i] !== '-' && s[i] !== '-') {
-        matchLine += ' '
-      } else {
-        matchLine += ' '
+    let qPos = hsp.query_start
+    let sPos = hsp.subject_start
+
+    for (let offset = 0; offset < q.length; offset += LINE_LEN) {
+      const qChunk = q.slice(offset, offset + LINE_LEN)
+      const sChunk = s.slice(offset, offset + LINE_LEN)
+
+      let match = ''
+      for (let i = 0; i < qChunk.length; i++) {
+        const qi = qChunk[i].toUpperCase()
+        const si = i < sChunk.length ? sChunk[i].toUpperCase() : ''
+        if (qi === si && qi !== '-') {
+          match += '|'
+        } else if (qi !== '-' && si !== '-' && qi !== si) {
+          match += ' '
+        } else {
+          match += ' '
+        }
       }
+
+      const qEnd = qPos + qChunk.replace(/-/g, '').length - 1
+      const sEnd = sPos + sChunk.replace(/-/g, '').length - 1
+
+      queryLines.push(qChunk)
+      matchLines.push(match)
+      subjectLines.push(sChunk)
+      queryPositions.push(`${qPos}-${qEnd}`)
+      subjectPositions.push(`${sPos}-${sEnd}`)
+
+      qPos = qEnd + 1
+      sPos = sEnd + 1
     }
 
     blocks.push({
-      query: q,
-      match: matchLine,
-      subject: s,
+      queryStart: hsp.query_start,
+      queryEnd: hsp.query_end,
+      subjectStart: hsp.subject_start,
+      subjectEnd: hsp.subject_end,
+      queryLines,
+      matchLines,
+      subjectLines,
+      queryPositions,
+      subjectPositions,
     })
   }
 
   return blocks
 }
 
-export default function AlignmentView({ hit }: Props) {
+function buildFASTA(hit: Hit): string {
+  const lines: string[] = []
+  const qid = 'Query'
+  const sid = hit.subject_id
+
+  for (const hsp of hit.alignments) {
+    lines.push(`>${qid} ${hsp.query_start}-${hsp.query_end}`)
+    const q = hsp.query_seq
+    for (let i = 0; i < q.length; i += LINE_LEN) {
+      lines.push(q.slice(i, i + LINE_LEN))
+    }
+    lines.push(`>${sid} ${hsp.subject_start}-${hsp.subject_end}`)
+    const s = hsp.subject_seq
+    for (let i = 0; i < s.length; i += LINE_LEN) {
+      lines.push(s.slice(i, i + LINE_LEN))
+    }
+  }
+
+  return lines.join('\n')
+}
+
+export default function AlignmentView({ hit, onLookupTranscript }: Props) {
   const blocks = useMemo(() => {
     if (!hit) return []
-    return buildAlignment(hit)
+    return buildWrappedAlignment(hit)
+  }, [hit])
+
+  const handleExportFASTA = useCallback(() => {
+    if (!hit) return
+    const content = buildFASTA(hit)
+    const blob = new Blob([content], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${hit.subject_id}_alignment.fasta`
+    a.click()
+    URL.revokeObjectURL(url)
   }, [hit])
 
   if (!hit) {
@@ -48,7 +130,21 @@ export default function AlignmentView({ hit }: Props) {
 
   return (
     <Space direction="vertical" style={{ width: '100%' }} size="small">
-      <Text strong>{hit.subject_id}</Text>
+      <Space style={{ justifyContent: 'space-between', width: '100%' }}>
+        <Text strong>
+          {hit.subject_id} — {hit.identity.toFixed(1)}% identity, E-value: {hit.e_value}
+        </Text>
+        <Space>
+          {onLookupTranscript && (
+            <Button size="small" icon={<SearchOutlined />} onClick={() => onLookupTranscript(hit.subject_id)}>
+              Query Transcript
+            </Button>
+          )}
+          <Button size="small" icon={<DownloadOutlined />} onClick={handleExportFASTA}>
+            Export FASTA
+          </Button>
+        </Space>
+      </Space>
       <div
         style={{
           background: '#fafafa',
@@ -57,35 +153,43 @@ export default function AlignmentView({ hit }: Props) {
           overflowX: 'auto',
           maxHeight: 400,
           overflowY: 'auto',
+          fontFamily: '"Courier New", Courier, monospace',
+          fontSize: 12,
+          lineHeight: '16px',
         }}
       >
         {blocks.map((block, idx) => (
-          <pre
-            key={idx}
-            style={{
-              fontFamily: '"Courier New", Courier, monospace',
-              fontSize: 12,
-              lineHeight: '16px',
-              margin: '0 0 8px 0',
-              whiteSpace: 'pre',
-            }}
-          >
-            <div style={{ color: '#1677ff' }}>
-              Query   {Math.max(1, hit.alignments[idx]?.query_start ?? 0)}{' '}
-              {block.query}{' '}
-              {hit.alignments[idx]?.query_end ?? 0}
-            </div>
-            <div style={{ color: '#52c41a' }}>
-              {'       '}
-              {' '.repeat(String(hit.alignments[idx]?.query_start ?? 0).length)}{' '}
-              {block.match}
-            </div>
-            <div style={{ color: '#fa541c' }}>
-              Sbjct   {hit.alignments[idx]?.subject_start ?? 0}{' '}
-              {block.subject}{' '}
-              {hit.alignments[idx]?.subject_end ?? 0}
-            </div>
-          </pre>
+          <div key={idx} style={{ marginBottom: 12 }}>
+            {block.queryLines.map((qLine, lineIdx) => (
+              <pre
+                key={lineIdx}
+                style={{
+                  margin: 0,
+                  fontFamily: 'inherit',
+                  fontSize: 'inherit',
+                  lineHeight: 'inherit',
+                  whiteSpace: 'pre',
+                }}
+              >
+                <span style={{ color: '#1677ff' }}>
+                  Query  {String(block.queryPositions[lineIdx]).padStart(10)}{' '}
+                  {qLine}
+                </span>
+                {'\n'}
+                <span style={{ color: '#52c41a' }}>
+                  {'       '}
+                  {' '.repeat(11)}
+                  {block.matchLines[lineIdx]}
+                </span>
+                {'\n'}
+                <span style={{ color: '#fa541c' }}>
+                  Sbjct  {String(block.subjectPositions[lineIdx]).padStart(10)}{' '}
+                  {block.subjectLines[lineIdx]}
+                </span>
+              </pre>
+            ))}
+            {idx < blocks.length - 1 && <div style={{ height: 8 }} />}
+          </div>
         ))}
       </div>
     </Space>

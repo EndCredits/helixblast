@@ -19,3 +19,4 @@ blast:
 
 database:
   config_path: ./databases.yaml
+  worker_url: ""

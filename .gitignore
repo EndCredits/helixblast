@@ -32,3 +32,5 @@ data/
 # Configs
 config.yaml
 databases.yaml
+worker/.wrangler
+worker/wrangler.toml

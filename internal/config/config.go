@@ -41,6 +41,7 @@ type BlastConfig struct {
 
 type DatabaseConfig struct {
 	ConfigPath string `yaml:"config_path"`
+	WorkerURL  string `yaml:"worker_url"`
 }
 
 type ResourceInfo struct {

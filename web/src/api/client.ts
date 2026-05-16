@@ -111,3 +111,40 @@ export async function cancelJob(id: string): Promise<void> {
   })
   if (!res.ok) throw new Error('Failed to cancel job')
 }
+
+export interface TranscriptResult {
+  transcript_id: string
+  database: string
+  chromosome: string
+  start: number
+  end: number
+  strand: string
+  type: string
+  gene_id: string
+  sequence: string
+  scan_start: number
+  scan_end: number
+  regions?: {
+    exons: { start: number; end: number }[]
+    cdss: { start: number; end: number }[]
+  }
+  related?: {
+    transcripts: string[]
+    cdss: string[]
+    exons: string[]
+  }
+}
+
+export async function lookupTranscript(
+  db: string,
+  transcript: string,
+): Promise<TranscriptResult> {
+  const res = await fetch(
+    `${BASE}/transcripts?db=${encodeURIComponent(db)}&transcript=${encodeURIComponent(transcript)}`,
+  )
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err.error || 'Transcript lookup failed')
+  }
+  return res.json()
+}

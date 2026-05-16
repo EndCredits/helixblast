@@ -12,11 +12,18 @@ import (
 )
 
 type DatabaseEntry struct {
-	Name        string `yaml:"name"`
-	Type        string `yaml:"type"`
-	Path        string `yaml:"path"`
-	Description string `yaml:"description"`
-	LastUpdated string `yaml:"last_updated"`
+	Name        string          `yaml:"name"`
+	Type        string          `yaml:"type"`
+	Path        string          `yaml:"path"`
+	Description string          `yaml:"description"`
+	LastUpdated string          `yaml:"last_updated"`
+	Transcript  TranscriptConfig `yaml:"transcript"`
+}
+
+type TranscriptConfig struct {
+	IndexPath string `yaml:"index_path"`
+	FastaDir  string `yaml:"fasta_dir"`
+	FastaFile string `yaml:"fasta_file"`
 }
 
 type DatabaseList struct {
