@@ -7,6 +7,10 @@ web/node_modules/
 web/dist/
 web/.vite/
 
+# Embedded frontend build artifacts (generated on build)
+embed/assets/
+embed/index.html
+
 # Environment
 .env
 .env.local

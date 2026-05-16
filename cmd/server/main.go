@@ -90,9 +90,6 @@ func main() {
 
 		params := make(map[string]string)
 		for key, val := range job.AdvancedParams {
-			if key == "_template" {
-				continue
-			}
 			if whitelist != nil && !whitelist.IsAllowed(key) {
 				return nil, fmt.Errorf("invalid blast parameter: -%s", key)
 			}

@@ -76,7 +76,7 @@ export default function HomePage() {
 
     const advParams: Record<string, string> = {}
     if (template) {
-      advParams['_template'] = template
+      advParams['task'] = template
     }
     if (advancedParams.trim()) {
       const parts = advancedParams.trim().split(/\s+/)
