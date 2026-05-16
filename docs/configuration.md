@@ -1,0 +1,147 @@
+# Configuration
+
+HelixBLAST uses two YAML files. No environment variables.
+
+## config.yaml
+
+### server
+
+```yaml
+server:
+  port: 8080
+```
+
+The single HTTP port for both API and embedded frontend. No separate dev/prod ports — the Go binary serves everything.
+
+### storage
+
+```yaml
+storage:
+  type: local           # local | s3
+  data_dir: ./data
+  result_ttl_hours: 24
+```
+
+| Field | Default | Why |
+|-------|---------|-----|
+| `type` | `local` | Local disk for single-server deployments. `s3` for S3-compatible storage (Cloudflare R2, MinIO, AWS S3) |
+| `data_dir` | `./data` | Where job results are stored on disk. Ignored when `type=s3` |
+| `result_ttl_hours` | `24` | Job results are ephemeral — auto-deleted after this period. No long-term archive |
+
+### s3
+
+```yaml
+s3:
+  endpoint: ""
+  bucket: ""
+  access_key: ""
+  secret_key: ""
+```
+
+Only required when `storage.type = s3`. Uses S3-compatible protocol — works with Cloudflare R2, MinIO, AWS S3. The `endpoint` must include the protocol (`https://`).
+
+### blast
+
+```yaml
+blast:
+  path: ""              # BLAST+ directory — empty = look in $PATH
+  max_jobs: 20          # Absolute concurrency cap
+  cpu_per_job: 2        # Threads per BLAST job
+```
+
+| Field | Default | Why |
+|-------|---------|-----|
+| `path` | `""` | Where to find `blastn`, `blastp`, etc. Empty means search `$PATH` |
+| `max_jobs` | `20` | Hard limit on concurrent BLAST processes. Prevents system overload |
+| `cpu_per_job` | `2` | Threads allocated to each BLAST process. Higher = faster per-job, fewer concurrent jobs |
+
+### Resource auto-detection
+
+On startup, HelixBLAST computes actual concurrency:
+
+```
+CPU concurrent  = max(1, runtime.NumCPU() / cpu_per_job)
+Memory limit    = available RAM < 2GB → 2, < 4GB → 5, else 20
+Actual concurrent = min(max_jobs, CPU, memory)
+```
+
+If `actual concurrent < 5`, the system enters **degraded mode**: `/health` returns `status: degraded` and the frontend shows a warning banner. This is transparent to users — jobs still run, just with limited throughput.
+
+### database
+
+```yaml
+database:
+  config_path: ./databases.yaml
+  worker_url: ""        # Cloudflare Worker URL for transcript lookup
+```
+
+`config_path` points to the database manifest. `worker_url` is optional — set it if using a Cloudflare Worker for transcript-to-genome lookups. When also configured with local `transcript` sections in `databases.yaml`, local takes priority.
+
+## databases.yaml
+
+Each entry declares a BLAST database and optionally a transcript lookup source.
+
+```yaml
+databases:
+  - name: "arachis-9102"
+    type: "protein"
+    path: "/path/to/blastdb/YZ9102-prot"
+    description: "Peanut YZ9102 genome annotation"
+    last_updated: "2026-05-16"
+    transcript:
+      index_path: "/data/gff3/arachis-9102.index.json"
+      fasta_dir: "/data/genome/arachis-9102/"
+      # fasta_file: "/data/genome/arachis-9102.fa"  # alternative: single multi-FASTA
+```
+
+| Field | Required | Why |
+|-------|----------|-----|
+| `name` | Yes | Must match R2 directory name when using Cloudflare Worker transcript lookup |
+| `type` | Yes | `nucleotide` or `protein` |
+| `path` | Yes | Absolute path to the BLAST database (the prefix before `.phr`/`.pin`/`.psq`) |
+| `description` | No | Displayed in the UI dropdown |
+| `last_updated` | No | Displayed in the UI |
+| `transcript` | No | Enables transcript lookup for this database |
+
+### transcript section
+
+| Field | Why |
+|-------|-----|
+| `index_path` | Path to the GFF3 preprocessed index. Supports `.json` and `.json.gz` (auto-detected) |
+| `fasta_dir` | Directory with per-chromosome FASTA files (`Chr01.fa`, `Chr02.fa`, ...). Tried first |
+| `fasta_file` | Single multi-FASTA file containing all chromosomes. Fallback if `fasta_dir` chromosome not found |
+
+The `transcript` section enables local (zero-network) transcript lookup. When present, HelixBLAST reads the index and FASTA files directly from disk using `f.Seek()` for O(1) chromosome positioning. The Cloudflare Worker is only used as a fallback when `worker_url` is set and no local FASTA is configured.
+
+```yaml
+# Recommended: use .json.gz for the index (~8MB vs ~40MB)
+transcript:
+  index_path: "/data/gff3/arachis-9102.index.json.gz"
+  fasta_dir: "/data/genome/arachis-9102/"
+```
+
+### Hot reload
+
+`databases.yaml` is watched via `fsnotify`. Changes are picked up within seconds — no restart needed. If the new config is invalid (e.g., missing required fields), the old config is kept and an error is logged.
+
+## Generating the transcript index
+
+The GFF3 index is pre-built with `prepare.js`:
+
+```bash
+node worker/scripts/prepare.js input.gff3 db-name /path/to/genome.fa
+```
+
+This produces `db-name.index.json` (for local use) and `db-name.index.json.gz` (for Cloudflare Worker). The index contains:
+
+- **entries** — every GFF3 ID (gene, mRNA, CDS, exon) resolved to its parent mRNA's genomic coordinates via Parent chain traversal
+- **families** — gene → transcript/CDS/exon ID lists for inter-query
+- **coords** — per-transcript exon/CDS coordinate arrays for sequence extraction
+- **fasta_index** — per-chromosome byte offsets in the FASTA file for O(1) seeking
+
+For per-chromosome FASTA files (recommended for Worker), split the genome first:
+
+```bash
+./worker/scripts/split_fasta.sh /path/to/genome.fa output_dir/
+# → output_dir/Chr01.fa.gz, Chr02.fa.gz, ...
+```
