@@ -26,7 +26,7 @@ GET /api/v1/transcripts?db=X&transcript=Y
         │
         └─ config.yaml has database.worker_url?
               └─ Yes → proxy to Cloudflare Worker
-                     Worker loads index.json.gz from R2 → extracts from R2 FASTA
+                     HelixBLAST loads index.json.gz from local storage → extracts from R2 FASTA
 ```
 
 ## Index format
