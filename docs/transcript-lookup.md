@@ -90,22 +90,27 @@ Without byte offsets, finding chromosome 19 in a 2.5GB multi-FASTA file requires
 
 The scanned sequence covers `(start - 5000)` to `end` to include 5kb upstream. Exon and CDS stitching is done client-side from the returned coordinates.
 
-## Cloudflare Worker mode (JavaScript)
+## Cloudflare Worker mode
 
-`worker/src/index.js` handles compressed FASTA on R2. Two file layout strategies:
+`worker/src/index.js` is a thin I/O pipe. It does NOT load or parse the GFF3 index — that stays on the HelixBLAST server to stay under the 10ms Cloudflare Workers CPU limit (free plan).
 
-| Layout | Fetch cost | Extract cost |
-|--------|-----------|--------------|
-| Per-chromosome `fasta/db/Chr05.fa.gz` | O(1) — fetch one file from R2 | O(chromosome) — gzip decompress + range extract |
-| Multi-FASTA `fasta/db/genome.fa.gz` | O(1) — fetch one file from R2 | O(n) — gzip decompress through all preceding chromosomes |
+The Worker only exposes `/sequence`:
 
-**Recommendation**: Use per-chromosome files for Worker. Split with:
+```
+GET /sequence?db=&chr=&start=&end=&strand=
+  → fetch fasta/<db>/<chr>.fa.gz from R2
+  → DecompressionStream('gzip') → stream decompress
+  → extractRange(start, end) → sliding window, stops when range collected
+  → return { sequence: "ATGC..." }
+```
+
+Per-chromosome FASTA files only — no multi-FASTA fallback. Split with:
 
 ```bash
 ./worker/scripts/split_fasta.sh /path/to/genome.fa output_dir/
 ```
 
-The Worker also uses a sliding window approach — for standard-length lines (≤120bp), it processes line-by-line. For long lines (>120bp), it falls back to character-by-character scanning. In all cases, it stops reading as soon as the requested range is collected, never holding the entire chromosome in memory.
+The Worker uses a sliding window approach — for standard lines (≤120bp), line-level skipping. For long lines, character-by-character scanning. In both cases, stops reading as soon as the range is collected. `DecompressionStream` is a native API that doesn't count against JS CPU time.
 
 ### R2 bucket structure
 
