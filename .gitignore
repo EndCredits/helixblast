@@ -28,3 +28,7 @@ Thumbs.db
 # Data
 data/
 *.db
+
+# Configs
+config.yaml
+databases.yaml
