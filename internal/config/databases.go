@@ -12,12 +12,13 @@ import (
 )
 
 type DatabaseEntry struct {
-	Name        string          `yaml:"name"`
-	Type        string          `yaml:"type"`
-	Path        string          `yaml:"path"`
-	Description string          `yaml:"description"`
-	LastUpdated string          `yaml:"last_updated"`
-	Transcript  TranscriptConfig `yaml:"transcript"`
+	Name            string          `yaml:"name"`
+	Type            string          `yaml:"type"`
+	Path            string          `yaml:"path"`
+	Description     string          `yaml:"description"`
+	LastUpdated     string          `yaml:"last_updated"`
+	Transcript      TranscriptConfig `yaml:"transcript"`
+	IsChromosomeDB  bool            `yaml:"is_chromosome_db"`
 }
 
 type TranscriptConfig struct {

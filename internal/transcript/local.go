@@ -31,10 +31,62 @@ type GFF3Family struct {
 type GFF3Families map[string]GFF3Family
 
 type GFF3Data struct {
-	Entries    GFF3Index       `json:"entries"`
-	Families   GFF3Families    `json:"families"`
-	Coords     GFF3Coords      `json:"coords"`
+	Entries    GFF3Index        `json:"entries"`
+	Families   GFF3Families     `json:"families"`
+	Coords     GFF3Coords       `json:"coords"`
 	FastaIndex map[string]int64 `json:"fasta_index"`
+	Spatial    GFF3Spatial      `json:"spatial"`
+}
+
+type GFF3Spatial map[string][]SpatialFeature
+
+type SpatialFeature struct {
+	Start int    `json:"start"`
+	End   int    `json:"end"`
+	ID    string `json:"id"`
+	Type  string `json:"type"`
+}
+
+type SpatialResult struct {
+	Chromosome string           `json:"chromosome"`
+	Position   int              `json:"position"`
+	Features   []SpatialFeature `json:"features"`
+	Upstream   *SpatialFeature  `json:"upstream,omitempty"`
+	Downstream *SpatialFeature  `json:"downstream,omitempty"`
+}
+
+func SpatialLookup(gffData *GFF3Data, chr string, pos int) (*SpatialResult, error) {
+	features, ok := gffData.Spatial[chr]
+	if !ok {
+		return nil, fmt.Errorf("chromosome %s not found in spatial index", chr)
+	}
+
+	var overlapping []SpatialFeature
+	var upstream, downstream *SpatialFeature
+
+	for i := range features {
+		f := features[i]
+		if f.Start <= pos && pos <= f.End {
+			overlapping = append(overlapping, f)
+		}
+		if f.End < pos {
+			c := f
+			upstream = &c
+		}
+		if f.Start > pos && downstream == nil {
+			c := f
+			downstream = &c
+			break
+		}
+	}
+
+	return &SpatialResult{
+		Chromosome: chr,
+		Position:   pos,
+		Features:   overlapping,
+		Upstream:   upstream,
+		Downstream: downstream,
+	}, nil
 }
 
 type GFF3Coords map[string]TranscriptRegions

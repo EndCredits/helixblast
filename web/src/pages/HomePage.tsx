@@ -31,8 +31,8 @@ import ParamPanel from '../components/ParamPanel'
 import JobCard from '../components/JobCard'
 import ResultsTable from '../components/ResultsTable'
 import AlignmentView from '../components/AlignmentView'
-import type { Hit, BlastResult, TranscriptResult } from '../api/client'
-import { lookupTranscript } from '../api/client'
+import type { Hit, BlastResult, TranscriptResult, SpatialResult } from '../api/client'
+import { lookupTranscript, fetchSpatial } from '../api/client'
 
 const { Content } = Layout
 const { Title, Text } = Typography
@@ -66,6 +66,11 @@ export default function HomePage() {
   const [selectedHit, setSelectedHit] = useState<Hit | null>(null)
   const [transcriptResult, setTranscriptResult] = useState<TranscriptResult | null>(null)
   const [transcriptLoading, setTranscriptLoading] = useState(false)
+  const [spatialLoading, setSpatialLoading] = useState(false)
+  const [spatialResult, setSpatialResult] = useState<SpatialResult | null>(null)
+  const spatialRef = useRef<HTMLDivElement>(null)
+
+  const currentDB = databases.find((d) => d.name === database)
 
   const resultsRef = useRef<HTMLDivElement>(null)
   const alignmentRef = useRef<HTMLDivElement>(null)
@@ -92,6 +97,27 @@ export default function HomePage() {
       }, 100)
     }
   }, [selectedHit])
+
+  useEffect(() => {
+    if (!selectedHit || !currentDB?.is_chromosome_db) {
+      setSpatialResult(null)
+      return
+    }
+    const jobDB = jobDetail?.database
+    if (!jobDB) return
+    const chr = selectedHit.subject_id
+    const pos = Math.floor((selectedHit.alignments[0].subject_start + selectedHit.alignments[0].subject_end) / 2)
+    setSpatialLoading(true)
+    fetchSpatial(jobDB, chr, pos)
+      .then((r) => {
+        setSpatialResult(r)
+        setTimeout(() => {
+          spatialRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }, 100)
+      })
+      .catch(() => setSpatialResult(null))
+      .finally(() => setSpatialLoading(false))
+  }, [selectedHit, jobDetail?.database, currentDB?.is_chromosome_db])
 
   const handleSubmit = useCallback(async () => {
     const err = validateFASTA(fasta)
@@ -137,22 +163,48 @@ export default function HomePage() {
       message.error('Please enter a transcript ID')
       return
     }
-    if (!database) {
+    const lookupDB = id ? (jobDetail?.database || database) : database
+    if (!lookupDB) {
       message.error('Please select a database')
       return
     }
     setTranscriptLoading(true)
     try {
-      const result = await lookupTranscript(database, tid)
+      const result = await lookupTranscript(lookupDB, tid)
       setTranscriptResult(result)
       if (!id) setTranscriptId(tid)
+      if (id) {
+        setQueryMode('transcript')
+        setSelectedJobId(null)
+        setSelectedHit(null)
+      }
+      setSpatialResult(null)
       message.success(`Found: ${result.chromosome}:${result.start}-${result.end} (${result.strand})`)
+      setTimeout(() => {
+        resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 100)
     } catch (e: any) {
       message.error(e.message || 'Transcript lookup failed')
     } finally {
       setTranscriptLoading(false)
     }
-  }, [transcriptId, database])
+  }, [transcriptId, database, jobDetail?.database])
+
+  const handleSpatialLookup = useCallback(async (chr: string, pos: number) => {
+    const lookupDB = jobDetail?.database || database
+    if (!lookupDB) {
+      message.error('Please select a database')
+      return
+    }
+    try {
+      const result = await fetchSpatial(lookupDB, chr, pos)
+      setSpatialResult(result)
+      setQueryMode('transcript')
+      setTranscriptResult(null)
+    } catch (e: any) {
+      message.error(e.message || 'Spatial lookup failed')
+    }
+  }, [database, jobDetail?.database])
 
   const handleCancel = useCallback(
     async (id: string) => {
@@ -304,6 +356,58 @@ export default function HomePage() {
                   <Text type="secondary">Select a job from the list above to view results</Text>
                 )}
 
+                {queryMode === 'transcript' && spatialResult && !transcriptResult && (
+                  <Space direction="vertical" style={{ width: '100%' }} size="small">
+                    <Alert
+                      message={`${spatialResult.chromosome}:${spatialResult.position}`}
+                      description={
+                        spatialResult.features.length > 0
+                          ? `${spatialResult.features.length} overlapping feature(s)`
+                          : 'No overlapping features — showing flanking genes'
+                      }
+                      type={spatialResult.features.length > 0 ? 'info' : 'warning'}
+                      showIcon
+                    />
+                    {spatialResult.features.map((f) => (
+                      <Card key={f.id} size="small">
+                        <Space>
+                          <Tag color={f.type === 'gene' ? 'blue' : f.type === 'mRNA' ? 'green' : 'orange'}>{f.type}</Tag>
+                          <Text code style={{ cursor: 'pointer' }}
+                            onClick={() => handleTranscriptLookup(f.id)}>
+                            {f.id}
+                          </Text>
+                          <Text type="secondary">({f.start}-{f.end})</Text>
+                        </Space>
+                      </Card>
+                    ))}
+                    {spatialResult.upstream && (
+                      <Card key={spatialResult.upstream.id} size="small">
+                        <Space>
+                          <Tag>↑ upstream ({spatialResult.position - spatialResult.upstream.end} bp)</Tag>
+                          <Text code style={{ cursor: 'pointer' }}
+                            onClick={() => handleTranscriptLookup(spatialResult.upstream!.id)}>
+                            {spatialResult.upstream.id}
+                          </Text>
+                          <Text type="secondary">({spatialResult.upstream.start}-{spatialResult.upstream.end})</Text>
+                        </Space>
+                      </Card>
+                    )}
+                    {spatialResult.downstream && (
+                      <Card key={spatialResult.downstream.id} size="small">
+                        <Space>
+                          <Tag>↓ downstream ({spatialResult.downstream.start - spatialResult.position} bp)</Tag>
+                          <Text code style={{ cursor: 'pointer' }}
+                            onClick={() => handleTranscriptLookup(spatialResult.downstream!.id)}>
+                            {spatialResult.downstream.id}
+                          </Text>
+                          <Text type="secondary">({spatialResult.downstream.start}-{spatialResult.downstream.end})</Text>
+                        </Space>
+                      </Card>
+                    )}
+                    <Button size="small" onClick={() => setSpatialResult(null)}>Clear</Button>
+                  </Space>
+                )}
+
                 {queryMode === 'transcript' && transcriptResult && (
                   <Space direction="vertical" style={{ width: '100%' }} size="middle">
                     <Alert
@@ -446,15 +550,65 @@ export default function HomePage() {
                         {selectedHit && (
                           <div ref={alignmentRef}>
                             <Divider />
+                            {spatialLoading && (
+                              <div style={{ textAlign: 'center', padding: 8 }}>
+                                <Spin /> <Text type="secondary">Looking up genomic features ...</Text>
+                                <Divider />
+                              </div>
+                            )}
                             <AlignmentView
                               hit={selectedHit}
-                              onLookupTranscript={(id) => {
-                                setQueryMode('transcript')
-                                setTranscriptResult(null)
-                                setTranscriptId(id)
-                                setTimeout(() => handleTranscriptLookup(id), 50)
-                              }}
+                              onLookupTranscript={(id) => handleTranscriptLookup(id)}
+                              onLookupRegion={(chr, pos) => handleSpatialLookup(chr, pos)}
                             />
+                            {currentDB?.is_chromosome_db && spatialResult && (
+                              <div ref={spatialRef}>
+                              <Space direction="vertical" style={{ width: '100%' }} size="small">
+                                <Divider />
+                                <Text strong>
+                                  {spatialResult.features.length > 0
+                                    ? `${spatialResult.features.length} overlapping feature(s) at ${spatialResult.position}`
+                                    : `No overlap — flanking genes at position ${spatialResult.position}`}
+                                </Text>
+                                {spatialResult.features.map((f) => (
+                                  <Card key={f.id} size="small">
+                                    <Space>
+                                      <Tag color={f.type === 'gene' ? 'blue' : f.type === 'mRNA' ? 'green' : 'orange'}>{f.type}</Tag>
+                                      <Text code style={{ cursor: 'pointer' }}
+                                        onClick={() => handleTranscriptLookup(f.id)}>
+                                        {f.id}
+                                      </Text>
+                                      <Text type="secondary">({f.start}-{f.end})</Text>
+                                    </Space>
+                                  </Card>
+                                ))}
+                                {spatialResult.upstream && (
+                                  <Card key={spatialResult.upstream.id} size="small">
+                                    <Space>
+                                      <Tag>↑ {spatialResult.position - spatialResult.upstream.end} bp</Tag>
+                                      <Text code style={{ cursor: 'pointer' }}
+                                        onClick={() => handleTranscriptLookup(spatialResult.upstream!.id)}>
+                                        {spatialResult.upstream.id}
+                                      </Text>
+                                      <Text type="secondary">({spatialResult.upstream.start}-{spatialResult.upstream.end})</Text>
+                                    </Space>
+                                  </Card>
+                                )}
+                                {spatialResult.downstream && (
+                                  <Card key={spatialResult.downstream.id} size="small">
+                                    <Space>
+                                      <Tag>↓ {spatialResult.downstream.start - spatialResult.position} bp</Tag>
+                                      <Text code style={{ cursor: 'pointer' }}
+                                        onClick={() => handleTranscriptLookup(spatialResult.downstream!.id)}>
+                                        {spatialResult.downstream.id}
+                                      </Text>
+                                      <Text type="secondary">({spatialResult.downstream.start}-{spatialResult.downstream.end})</Text>
+                                    </Space>
+                                  </Card>
+                                )}
+                              </Space>
+                              </div>
+                            )}
                           </div>
                         )}
                       </>

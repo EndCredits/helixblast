@@ -120,7 +120,19 @@ async function parseGFF3(filePath) {
     coords[id].cdss.sort((a, b) => a.start - b.start)
   }
 
-  return { index, families, coords }
+  // Build spatial index: chr → sorted features for interval lookup
+  const spatial = {}
+  for (const entry of raw) {
+    if (entry.type !== 'gene' && entry.type !== 'mRNA' && entry.type !== 'CDS' && entry.type !== 'exon') continue
+    if (!entry.chr) continue
+    if (!spatial[entry.chr]) spatial[entry.chr] = []
+    spatial[entry.chr].push({ start: entry.start, end: entry.end, id: entry.id, type: entry.type })
+  }
+  for (const chr of Object.keys(spatial)) {
+    spatial[chr].sort((a, b) => a.start - b.start)
+  }
+
+  return { index, families, coords, spatial }
 }
 
 function extractAttr(attrs, key) {
@@ -171,7 +183,7 @@ async function main() {
   const fastaFile = args[2]
 
   console.log(`Parsing ${inputFile}...`)
-  const { index, families, coords } = await parseGFF3(inputFile)
+  const { index, families, coords, spatial } = await parseGFF3(inputFile)
 
   const ids = Object.keys(index)
   const types = {}
@@ -185,12 +197,14 @@ async function main() {
     console.log(`  ${t}: ${n}`)
   }
   console.log(`Gene families: ${Object.keys(families).length}`)
+  const spatialCount = Object.values(spatial).reduce((sum, arr) => sum + arr.length, 0)
+  console.log(`Spatial features (for interval lookup): ${spatialCount} across ${Object.keys(spatial).length} chromosomes`)
 
   console.log(`\nIndexing FASTA: ${fastaFile}`)
   const fastaIndex = await buildFastaIndex(fastaFile)
   console.log(`Indexed ${Object.keys(fastaIndex).length} chromosomes`)
 
-  const output = { entries: index, families: families, coords: coords, fasta_index: fastaIndex }
+  const output = { entries: index, families: families, coords: coords, fasta_index: fastaIndex, spatial: spatial }
   const jsonStr = JSON.stringify(output)
 
   const gzPath = `${outputPrefix}.index.json.gz`

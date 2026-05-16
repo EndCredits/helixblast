@@ -47,6 +47,7 @@ func NewServer(cfg *config.Config, pool *worker.Pool, dbMgr *config.DatabaseMana
 	s.router.Get("/health", s.handleHealth)
 	s.router.Get("/api/v1/databases", s.handleDatabases)
 	s.router.Get("/api/v1/transcripts", s.handleTranscriptLookup)
+	s.router.Get("/api/v1/spatial", s.handleSpatialLookup)
 
 	s.router.Route("/api/v1/jobs", func(r chi.Router) {
 		r.Post("/", s.handleJobCreate)
@@ -102,19 +103,21 @@ func (s *Server) handleDatabases(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type dbResponse struct {
-		Name        string `json:"name"`
-		Type        string `json:"type"`
-		Description string `json:"description"`
-		LastUpdated string `json:"last_updated"`
+		Name           string `json:"name"`
+		Type           string `json:"type"`
+		Description    string `json:"description"`
+		LastUpdated    string `json:"last_updated"`
+		IsChromosomeDB bool   `json:"is_chromosome_db"`
 	}
 
 	out := make([]dbResponse, len(dbs))
 	for i, db := range dbs {
 		out[i] = dbResponse{
-			Name:        db.Name,
-			Type:        db.Type,
-			Description: db.Description,
-			LastUpdated: db.LastUpdated,
+			Name:           db.Name,
+			Type:           db.Type,
+			Description:    db.Description,
+			LastUpdated:    db.LastUpdated,
+			IsChromosomeDB: db.IsChromosomeDB,
 		}
 	}
 
@@ -257,6 +260,47 @@ func (s *Server) handleJobEvents(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+func (s *Server) handleSpatialLookup(w http.ResponseWriter, r *http.Request) {
+	db := r.URL.Query().Get("db")
+	chr := r.URL.Query().Get("chr")
+	posStr := r.URL.Query().Get("pos")
+	if db == "" || chr == "" || posStr == "" {
+		jsonError(w, http.StatusBadRequest, "db, chr, and pos are required parameters")
+		return
+	}
+
+	var posInt int
+	if _, err := fmt.Sscanf(posStr, "%d", &posInt); err != nil || posInt < 1 {
+		jsonError(w, http.StatusBadRequest, "pos must be a positive integer")
+		return
+	}
+
+	dbEntry, err := s.dbMgr.Lookup(db)
+	if err != nil {
+		jsonError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	if dbEntry.Transcript.IndexPath == "" {
+		jsonError(w, http.StatusServiceUnavailable, "transcript lookup not configured for this database")
+		return
+	}
+
+	gffData, err := transcript.LoadIndex(dbEntry.Transcript.IndexPath)
+	if err != nil {
+		jsonError(w, http.StatusInternalServerError, fmt.Sprintf("load index: %v", err))
+		return
+	}
+
+	result, err := transcript.SpatialLookup(gffData, chr, posInt)
+	if err != nil {
+		jsonError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, result)
 }
 
 func jsonResponse(w http.ResponseWriter, code int, data any) {

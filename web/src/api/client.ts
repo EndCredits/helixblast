@@ -5,6 +5,7 @@ export interface Database {
   type: string
   description: string
   last_updated: string
+  is_chromosome_db: boolean
 }
 
 export interface HealthInfo {
@@ -145,6 +146,36 @@ export async function lookupTranscript(
   if (!res.ok) {
     const err = await res.json()
     throw new Error(err.error || 'Transcript lookup failed')
+  }
+  return res.json()
+}
+
+export interface SpatialFeature {
+  start: number
+  end: number
+  id: string
+  type: string
+}
+
+export interface SpatialResult {
+  chromosome: string
+  position: number
+  features: SpatialFeature[]
+  upstream?: SpatialFeature
+  downstream?: SpatialFeature
+}
+
+export async function fetchSpatial(
+  db: string,
+  chr: string,
+  pos: number,
+): Promise<SpatialResult> {
+  const res = await fetch(
+    `${BASE}/spatial?db=${encodeURIComponent(db)}&chr=${encodeURIComponent(chr)}&pos=${pos}`,
+  )
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err.error || 'Spatial lookup failed')
   }
   return res.json()
 }

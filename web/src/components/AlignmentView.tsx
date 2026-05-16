@@ -1,6 +1,6 @@
 import { useMemo, useCallback } from 'react'
-import { Typography, Space, Empty, Button } from 'antd'
-import { DownloadOutlined, SearchOutlined } from '@ant-design/icons'
+import { Typography, Space, Empty, Button, Divider } from 'antd'
+import { DownloadOutlined, SearchOutlined, EnvironmentOutlined } from '@ant-design/icons'
 import type { Hit } from '../api/client'
 
 const { Text } = Typography
@@ -10,6 +10,7 @@ const LINE_LEN = 60
 interface Props {
   hit: Hit | null
   onLookupTranscript?: (id: string) => void
+  onLookupRegion?: (chr: string, pos: number) => void
 }
 
 interface AlignmentBlock {
@@ -106,7 +107,7 @@ function buildFASTA(hit: Hit): string {
   return lines.join('\n')
 }
 
-export default function AlignmentView({ hit, onLookupTranscript }: Props) {
+export default function AlignmentView({ hit, onLookupTranscript, onLookupRegion }: Props) {
   const blocks = useMemo(() => {
     if (!hit) return []
     return buildWrappedAlignment(hit)
@@ -140,6 +141,14 @@ export default function AlignmentView({ hit, onLookupTranscript }: Props) {
               Query Transcript
             </Button>
           )}
+          {onLookupRegion && hit.alignments.length > 0 && (
+            <Button size="small" icon={<EnvironmentOutlined />} onClick={() => {
+              const pos = Math.floor((hit.alignments[0].subject_start + hit.alignments[0].subject_end) / 2)
+              onLookupRegion(hit.subject_id, pos)
+            }}>
+              Lookup Region
+            </Button>
+          )}
           <Button size="small" icon={<DownloadOutlined />} onClick={handleExportFASTA}>
             Export FASTA
           </Button>
@@ -160,6 +169,12 @@ export default function AlignmentView({ hit, onLookupTranscript }: Props) {
       >
         {blocks.map((block, idx) => (
           <div key={idx} style={{ marginBottom: 12 }}>
+            {blocks.length > 1 && (
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>
+                HSP {idx + 1}/{blocks.length}
+                {idx < blocks.length - 1 && <Divider style={{ margin: '4px 0' }} />}
+              </div>
+            )}
             {block.queryLines.map((qLine, lineIdx) => (
               <pre
                 key={lineIdx}
@@ -171,21 +186,28 @@ export default function AlignmentView({ hit, onLookupTranscript }: Props) {
                   whiteSpace: 'pre',
                 }}
               >
-                <span style={{ color: '#1677ff' }}>
-                  Query  {String(block.queryPositions[lineIdx]).padStart(10)}{' '}
-                  {qLine}
-                </span>
-                {'\n'}
-                <span style={{ color: '#52c41a' }}>
-                  {'       '}
-                  {' '.repeat(11)}
-                  {block.matchLines[lineIdx]}
-                </span>
-                {'\n'}
-                <span style={{ color: '#fa541c' }}>
-                  Sbjct  {String(block.subjectPositions[lineIdx]).padStart(10)}{' '}
-                  {block.subjectLines[lineIdx]}
-                </span>
+                {(() => {
+                  const qPos = block.queryPositions[lineIdx]
+                  const sPos = block.subjectPositions[lineIdx]
+                  const maxPosLen = Math.max(qPos.length, sPos.length)
+                  const labelWidth = 6
+                  const prefix = ' '.repeat(labelWidth)
+                  return (
+                    <>
+                      <span style={{ color: '#1677ff' }}>
+                        {'Query '}{qPos.padStart(maxPosLen)}{' '}{qLine}
+                      </span>
+                      {'\n'}
+                      <span style={{ color: '#52c41a' }}>
+                        {prefix}{' '.repeat(maxPosLen)}{' '}{block.matchLines[lineIdx]}
+                      </span>
+                      {'\n'}
+                      <span style={{ color: '#fa541c' }}>
+                        {'Sbjct '}{sPos.padStart(maxPosLen)}{' '}{block.subjectLines[lineIdx]}
+                      </span>
+                    </>
+                  )
+                })()}
               </pre>
             ))}
             {idx < blocks.length - 1 && <div style={{ height: 8 }} />}
