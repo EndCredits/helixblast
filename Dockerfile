@@ -7,10 +7,10 @@ COPY web/ .
 RUN npm run build
 
 # Stage 2: Build Go binary
-FROM golang:1.24-alpine AS builder
-RUN apk add --no-cache git
+FROM golang:1.26.3-trixie AS builder
 WORKDIR /src
 COPY go.mod go.sum ./
+RUN apt update -y && apt install -y git
 RUN go mod download
 COPY . .
 COPY --from=frontend /src/dist embed/
