@@ -32,5 +32,15 @@ END {
 }
 ' "$GENOME"
 
-echo "Done! All chromosomes written to $OUTDIR/"
-ls -lh "$OUTDIR"/
+echo "Done! Verifying..."
+corrupt=0
+for f in "$OUTDIR"/*.fa.gz; do
+  gzip -t "$f" || { echo "Corrupt: $f"; corrupt=1; }
+done
+if [ "$corrupt" -ne 0 ]; then
+  echo "Verification failed — some files are corrupt."
+  exit 1
+fi
+
+count=$(ls "$OUTDIR"/*.fa.gz 2>/dev/null | wc -l | tr -d ' ')
+echo "All $count chromosomes OK in $OUTDIR/"
