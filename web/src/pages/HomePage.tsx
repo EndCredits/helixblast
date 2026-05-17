@@ -246,6 +246,7 @@ export default function HomePage() {
         all.push(sj)
       }
     }
+    all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     return all
   }, [jobs, savedJobs])
 
