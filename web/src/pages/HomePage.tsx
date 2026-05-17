@@ -15,6 +15,7 @@ import {
   Input,
   Select,
   Form,
+  Collapse,
   message,
 } from 'antd'
 import {
@@ -33,7 +34,7 @@ import ResultsTable from '../components/ResultsTable'
 import AlignmentView from '../components/AlignmentView'
 import type { Hit, BlastResult, TranscriptResult, SpatialResult, JobItem } from '../api/client'
 import { lookupTranscript, fetchSpatial } from '../api/client'
-import { loadJobs } from '../lib/db'
+import { loadJobs, cacheClear } from '../lib/db'
 
 const { Content } = Layout
 const { Title, Text } = Typography
@@ -73,7 +74,11 @@ export default function HomePage() {
   const [savedJobs, setSavedJobs] = useState<JobItem[]>([])
 
   useEffect(() => {
-    loadJobs().then(setSavedJobs).catch(() => {})
+    loadJobs().then((jobs) =>
+      setSavedJobs(jobs.sort((a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      )),
+    ).catch(() => {})
   }, [])
 
   const resultsRef = useRef<HTMLDivElement>(null)
@@ -335,25 +340,64 @@ export default function HomePage() {
           <Col xs={24} lg={14}>
             <Card
               title={<Title level={5} style={{ margin: 0 }}>Jobs</Title>}
+              extra={
+                savedJobs.length > 0 && (
+                  <Button size="small" danger onClick={() => {
+                    cacheClear().then(() => {
+                      setSavedJobs([])
+                      message.success('Local cache cleared')
+                    }).catch(() => message.error('Failed to clear cache'))
+                  }}>
+                    Clear local ({savedJobs.length})
+                  </Button>
+                )
+              }
               style={{ marginBottom: 24 }}
             >
               {mergedJobs.length === 0 ? (
                 <Text type="secondary">No jobs submitted yet</Text>
               ) : (
                 <Space direction="vertical" style={{ width: '100%' }} size="small">
-                  {mergedJobs.map((job) => (
-                    <div key={job.job_id}>
-                      {(job as any)._cached && (
-                        <Tag color="default" style={{ marginBottom: 4, fontSize: 10 }}>local</Tag>
-                      )}
-                      <JobCard
-                        job={job}
-                        selected={selectedJobId === job.job_id}
-                        onSelect={handleSelectJob}
-                        onCancel={handleCancel}
-                      />
-                    </div>
-                  ))}
+                  <div key={mergedJobs[0].job_id}>
+                    {(mergedJobs[0] as any)._cached && (
+                      <Tag color="default" style={{ marginBottom: 4, fontSize: 10 }}>local</Tag>
+                    )}
+                    <JobCard
+                      job={mergedJobs[0]}
+                      selected={selectedJobId === mergedJobs[0].job_id}
+                      onSelect={handleSelectJob}
+                      onCancel={handleCancel}
+                    />
+                  </div>
+                  {mergedJobs.length > 1 && (
+                    <Collapse
+                      ghost
+                      size="small"
+                      items={[
+                        {
+                          key: 'older',
+                          label: `Older jobs (${mergedJobs.length - 1})`,
+                          children: (
+                            <Space direction="vertical" style={{ width: '100%' }} size="small">
+                              {mergedJobs.slice(1).map((job) => (
+                                <div key={job.job_id}>
+                                  {(job as any)._cached && (
+                                    <Tag color="default" style={{ marginBottom: 4, fontSize: 10 }}>local</Tag>
+                                  )}
+                                  <JobCard
+                                    job={job}
+                                    selected={selectedJobId === job.job_id}
+                                    onSelect={handleSelectJob}
+                                    onCancel={handleCancel}
+                                  />
+                                </div>
+                              ))}
+                            </Space>
+                          ),
+                        },
+                      ]}
+                    />
+                  )}
                 </Space>
               )}
             </Card>

@@ -84,3 +84,13 @@ export async function loadCachedJob(id: string): Promise<any | null> {
     req.onerror = () => reject(req.error)
   })
 }
+
+export async function cacheClear() {
+  const db = await open()
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite')
+    tx.objectStore(STORE).clear()
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+  })
+}
