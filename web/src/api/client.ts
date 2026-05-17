@@ -40,6 +40,22 @@ export interface Hit {
   e_value: string
   total_score: number
   alignments: HSP[]
+  database: string
+}
+
+export interface DatabaseErrorEntry {
+  database: string
+  error: string
+}
+
+export interface BlastResult {
+  job_id: string
+  status: string
+  database: string
+  databases?: string[]
+  program: string
+  results: Hit[]
+  errors?: DatabaseErrorEntry[]
 }
 
 export interface JobDetail {
@@ -90,7 +106,7 @@ export async function fetchJob(id: string): Promise<JobDetail> {
 export async function createJob(data: {
   fasta: string
   program: string
-  db: string
+  dbs: string[]
   template?: string
   advanced_params?: Record<string, string>
 }): Promise<{ job_id: string; status: string; queue_pos: number }> {

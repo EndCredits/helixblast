@@ -5,7 +5,7 @@ import (
 )
 
 func TestNewJob(t *testing.T) {
-	job := NewJob("blastn", "nt", ">seq1\nATGC", nil)
+	job := NewJob("blastn", []string{"nt"}, ">seq1\nATGC", nil)
 
 	if job.ID == "" {
 		t.Error("job ID should not be empty")
@@ -22,7 +22,7 @@ func TestNewJob(t *testing.T) {
 }
 
 func TestJobStateTransitions(t *testing.T) {
-	job := NewJob("blastn", "nt", ">seq1\nATGC", nil)
+	job := NewJob("blastn", []string{"nt"}, ">seq1\nATGC", nil)
 
 	job.SetStatus(StatusQueued)
 	if job.GetStatus() != StatusQueued {
@@ -41,7 +41,7 @@ func TestJobStateTransitions(t *testing.T) {
 }
 
 func TestJobCancel(t *testing.T) {
-	job := NewJob("blastn", "nt", ">seq1\nATGC", nil)
+	job := NewJob("blastn", []string{"nt"}, ">seq1\nATGC", nil)
 
 	if job.IsCancelling() {
 		t.Error("should not be cancelling initially")
@@ -55,7 +55,7 @@ func TestJobCancel(t *testing.T) {
 }
 
 func TestJobSnapshot(t *testing.T) {
-	job := NewJob("blastn", "nt", ">seq1\nATGC", nil)
+	job := NewJob("blastn", []string{"nt"}, ">seq1\nATGC", nil)
 	job.SetStatus(StatusRunning)
 	job.SetProgress("BLAST in progress")
 

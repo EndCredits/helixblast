@@ -60,7 +60,7 @@ export default function HomePage() {
   const [queryMode, setQueryMode] = useState<QueryMode>('blast')
   const [fasta, setFasta] = useState('')
   const [program, setProgram] = useState('blastn')
-  const [database, setDatabase] = useState('')
+  const [database, setDatabase] = useState<string[]>([])
   const [template, setTemplate] = useState('megablast')
   const [advancedParams, setAdvancedParams] = useState('')
   const [transcriptId, setTranscriptId] = useState('')
@@ -86,7 +86,11 @@ export default function HomePage() {
 
   const { data: jobDetail, isLoading: jobLoading, sseState } = useJobSSE(selectedJobId)
 
-  const currentDB = databases.find((d) => d.name === (jobDetail?.database || database))
+  const currentDB = databases.find((d) => {
+    if (selectedHit?.database) return d.name === selectedHit.database
+    if (database.length === 1) return d.name === database[0]
+    return false
+  })
 
   const fastaError = useMemo(() => {
     if (!fasta.trim()) return null
@@ -114,12 +118,12 @@ export default function HomePage() {
       setSpatialResult(null)
       return
     }
-    const jobDB = jobDetail?.database
-    if (!jobDB) return
+    const hitDB = selectedHit.database
+    if (!hitDB) return
     const chr = selectedHit.subject_id
     const pos = Math.floor((selectedHit.alignments[0].subject_start + selectedHit.alignments[0].subject_end) / 2)
     setSpatialLoading(true)
-    fetchSpatial(jobDB, chr, pos)
+    fetchSpatial(hitDB, chr, pos)
       .then((r) => {
         setSpatialResult(r)
         setTimeout(() => {
@@ -128,7 +132,7 @@ export default function HomePage() {
       })
       .catch(() => setSpatialResult(null))
       .finally(() => setSpatialLoading(false))
-  }, [selectedHit, jobDetail?.database, currentDB?.is_chromosome_db])
+  }, [selectedHit, currentDB?.is_chromosome_db])
 
   const handleSubmit = useCallback(async () => {
     const err = validateFASTA(fasta)
@@ -136,8 +140,8 @@ export default function HomePage() {
       message.error(err)
       return
     }
-    if (!database) {
-      message.error('Please select a database')
+    if (database.length === 0) {
+      message.error('Select at least one database')
       return
     }
 
@@ -159,10 +163,10 @@ export default function HomePage() {
       await createJob.mutateAsync({
         fasta: fasta.trim(),
         program,
-        db: database,
+        dbs: database,
         advanced_params: advParams,
       })
-      message.success('Job submitted successfully')
+      message.success(`Job submitted (${database.length} database${database.length > 1 ? 's' : ''})`)
     } catch (e: any) {
       message.error(e.message || 'Failed to submit job')
     }
@@ -174,9 +178,15 @@ export default function HomePage() {
       message.error('Please enter a transcript ID')
       return
     }
-    const lookupDB = id ? (jobDetail?.database || database) : database
+    const lookupDB = id ? selectedHit?.database : (database.length === 1 ? database[0] : undefined)
     if (!lookupDB) {
-      message.error('Please select a database')
+      message.error(
+        id
+          ? 'Database not available for this hit'
+          : database.length === 0
+            ? 'No database selected'
+            : 'Select exactly one database for transcript lookup (multiple selected currently)',
+      )
       return
     }
     if (id) {
@@ -202,12 +212,12 @@ export default function HomePage() {
     } finally {
       setTranscriptLoading(false)
     }
-  }, [transcriptId, database, jobDetail?.database])
+  }, [transcriptId, database, selectedHit?.database])
 
   const handleSpatialLookup = useCallback(async (chr: string, pos: number) => {
-    const lookupDB = jobDetail?.database || database
+    const lookupDB = selectedHit?.database || (database.length === 1 ? database[0] : undefined)
     if (!lookupDB) {
-      message.error('Please select a database')
+      message.error('No database available for spatial lookup')
       return
     }
     try {
@@ -218,7 +228,7 @@ export default function HomePage() {
     } catch (e: any) {
       message.error(e.message || 'Spatial lookup failed')
     }
-  }, [database, jobDetail?.database])
+  }, [database, selectedHit?.database])
 
   const handleCancel = useCallback(
     async (id: string) => {
@@ -286,8 +296,8 @@ export default function HomePage() {
                   <Space direction="vertical" style={{ width: '100%' }} size="small">
                     <Form.Item label="Database" style={{ marginBottom: 0 }}>
                       <Select
-                        value={database}
-                        onChange={setDatabase}
+                        value={database.length === 1 ? database[0] : undefined}
+                        onChange={(v) => setDatabase(v ? [v] : [])}
                         options={databases.map((db) => ({
                           label: `${db.name} (${db.type})`,
                           value: db.name,
@@ -308,9 +318,14 @@ export default function HomePage() {
                       type="primary"
                       onClick={() => handleTranscriptLookup()}
                       loading={transcriptLoading}
+                      disabled={database.length !== 1}
                       block
                     >
-                      Lookup Sequence
+                      {database.length === 1
+                        ? 'Lookup Sequence'
+                        : database.length === 0
+                          ? 'Select a database first'
+                          : 'Only one database allowed for transcript lookup'}
                     </Button>
                   </Space>
                 )}
@@ -339,6 +354,7 @@ export default function HomePage() {
 
           {/* Right: Jobs → Results */}
           <Col xs={24} lg={14}>
+            {queryMode === 'blast' && (
             <Card
               title={<Title level={5} style={{ margin: 0 }}>Jobs</Title>}
               extra={
@@ -346,6 +362,10 @@ export default function HomePage() {
                   <Button size="small" danger onClick={() => {
                     cacheClear().then(() => {
                       setSavedJobs([])
+                      setSelectedJobId(null)
+                      setSelectedHit(null)
+                      setTranscriptResult(null)
+                      setSpatialResult(null)
                       message.success('Local cache cleared')
                     }).catch(() => message.error('Failed to clear cache'))
                   }}>
@@ -402,6 +422,7 @@ export default function HomePage() {
                 </Space>
               )}
             </Card>
+            )}
 
             <div ref={resultsRef}>
               <Card
@@ -613,6 +634,24 @@ export default function HomePage() {
                         message={`Queued (position #${jobDetail.queue_pos})`}
                         type="info"
                         showIcon
+                      />
+                    )}
+
+                    {jobResult?.errors && jobResult.errors.length > 0 && (
+                      <Alert
+                        type="warning"
+                        showIcon
+                        message={`${jobResult.errors.length} database(s) failed`}
+                        description={
+                          <Space direction="vertical" size={2} style={{ width: '100%' }}>
+                            {jobResult.errors.map((e) => (
+                              <Text key={e.database} type="danger">
+                                <Text strong>{e.database}:</Text> {e.error}
+                              </Text>
+                            ))}
+                          </Space>
+                        }
+                        style={{ marginBottom: 12 }}
                       />
                     )}
 

@@ -82,8 +82,8 @@ func main() {
 		logger.Printf("  - %s (%s): %s", db.Name, db.Type, db.Description)
 	}
 
-	execFn := func(ctx context.Context, job *worker.Job) ([]blast.Hit, error) {
-		dbEntry, err := dm.Lookup(job.Database)
+	execFn := func(ctx context.Context, job *worker.Job, dbName string) ([]blast.Hit, error) {
+		dbEntry, err := dm.Lookup(dbName)
 		if err != nil {
 			return nil, fmt.Errorf("resolve database: %w", err)
 		}

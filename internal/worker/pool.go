@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"sync"
 	"time"
 
 	"github.com/EndCredits/helixblast/internal/blast"
 )
 
-type ExecFunc func(ctx context.Context, job *Job) ([]blast.Hit, error)
+type ExecFunc func(ctx context.Context, job *Job, dbName string) ([]blast.Hit, error)
 
 type Pool struct {
 	mu      sync.RWMutex
@@ -187,22 +188,37 @@ func (p *Pool) worker(id int) {
 
 		job.SetStatus(StatusRunning)
 		job.QueuePos = 0
-		job.SetProgress("BLAST search in progress")
 		p.updateQueuePositions()
 
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 		job.SetCancel(cancel)
 
-		hits, err := p.execFn(ctx, job)
-		cancel()
+		allHits := make([]blast.Hit, 0)
+		var errs []blast.DatabaseError
 
-		if err != nil {
-			log.Printf("[helixblast] Job %s failed: %v", job.ID, err)
-			job.SetStatus(StatusFailed)
-			job.SetError(err.Error())
-			p.updateQueuePositions()
-			continue
+		for _, dbName := range job.Databases {
+			if job.IsCancelling() {
+				errs = append(errs, blast.DatabaseError{Database: dbName, Error: "cancelled"})
+				continue
+			}
+
+			job.SetProgress(fmt.Sprintf("BLAST against %s ...", dbName))
+			job.notify()
+
+			hits, err := p.execFn(ctx, job, dbName)
+			if err != nil {
+				log.Printf("[helixblast] Job %s db=%s failed: %v", job.ID, dbName, err)
+				errs = append(errs, blast.DatabaseError{Database: dbName, Error: err.Error()})
+				continue
+			}
+
+			for i := range hits {
+				hits[i].Database = dbName
+			}
+			allHits = append(allHits, hits...)
 		}
+
+		cancel()
 
 		if job.IsCancelling() {
 			job.SetStatus(StatusCancelled)
@@ -211,12 +227,30 @@ func (p *Pool) worker(id int) {
 			continue
 		}
 
+		if len(allHits) == 0 && len(job.Databases) > 0 && len(errs) == len(job.Databases) {
+			job.SetStatus(StatusFailed)
+			job.SetError(errs[0].Error)
+			p.updateQueuePositions()
+			continue
+		}
+
+		sort.Slice(allHits, func(i, j int) bool {
+			return allHits[i].TotalScore > allHits[j].TotalScore
+		})
+		if len(allHits) > 200 {
+			allHits = allHits[:200]
+		}
+
 		result := blast.BlastResult{
-			JobID:    job.ID,
-			Status:   "success",
-			Database: job.Database,
-			Program:  job.Program,
-			Results:  hits,
+			JobID:     job.ID,
+			Status:    "success",
+			Database:  job.Database,
+			Databases: job.Databases,
+			Program:   job.Program,
+			Results:   allHits,
+		}
+		if len(errs) > 0 {
+			result.Errors = errs
 		}
 
 		data, err := json.Marshal(result)

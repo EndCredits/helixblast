@@ -126,10 +126,11 @@ func (s *Server) handleDatabases(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleJobCreate(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		FastA         string            `json:"fasta"`
-		Program       string            `json:"program"`
-		Database      string            `json:"db"`
-		Template      string            `json:"template,omitempty"`
+		FastA          string            `json:"fasta"`
+		Program        string            `json:"program"`
+		Database       string            `json:"db"`
+		Databases      []string          `json:"dbs"`
+		Template       string            `json:"template,omitempty"`
 		AdvancedParams map[string]string `json:"advanced_params,omitempty"`
 	}
 
@@ -138,12 +139,26 @@ func (s *Server) handleJobCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.FastA == "" || req.Program == "" || req.Database == "" {
-		jsonError(w, http.StatusBadRequest, "fasta, program, and db are required")
+	dbs := req.Databases
+	if len(dbs) == 0 {
+		if req.Database != "" {
+			dbs = []string{req.Database}
+		}
+	}
+
+	if req.FastA == "" || req.Program == "" || len(dbs) == 0 {
+		jsonError(w, http.StatusBadRequest, "fasta, program, and dbs (or db) are required")
 		return
 	}
 
-	job := worker.NewJob(req.Program, req.Database, req.FastA, req.AdvancedParams)
+	for _, dbName := range dbs {
+		if _, err := s.dbMgr.Lookup(dbName); err != nil {
+			jsonError(w, http.StatusBadRequest, fmt.Sprintf("unknown database: %s", dbName))
+			return
+		}
+	}
+
+	job := worker.NewJob(req.Program, dbs, req.FastA, req.AdvancedParams)
 
 	if err := s.pool.Submit(job); err != nil {
 		jsonError(w, http.StatusTooManyRequests, err.Error())

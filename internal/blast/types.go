@@ -22,14 +22,22 @@ type Hit struct {
 	EValue     string  `json:"e_value"`
 	TotalScore float64 `json:"total_score"`
 	Alignments []HSP   `json:"alignments"`
+	Database   string  `json:"database"`
+}
+
+type DatabaseError struct {
+	Database string `json:"database"`
+	Error    string `json:"error"`
 }
 
 type BlastResult struct {
-	JobID    string `json:"job_id"`
-	Status   string `json:"status"`
-	Database string `json:"database"`
-	Program  string `json:"program"`
-	Results  []Hit  `json:"results"`
+	JobID      string          `json:"job_id"`
+	Status     string          `json:"status"`
+	Database   string          `json:"database"`
+	Databases  []string        `json:"databases,omitempty"`
+	Program    string          `json:"program"`
+	Results    []Hit           `json:"results"`
+	Errors     []DatabaseError `json:"errors,omitempty"`
 }
 
 var validPrograms = map[string]string{

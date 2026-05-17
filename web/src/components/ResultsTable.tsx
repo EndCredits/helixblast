@@ -29,6 +29,13 @@ export default function ResultsTable({ hits, onSelectHit }: Props) {
       sorter: (a, b) => a.subject_id.localeCompare(b.subject_id),
     },
     {
+      title: 'Database',
+      dataIndex: 'database',
+      key: 'database',
+      width: 110,
+      render: (db: string) => db ? <Tag color="blue">{db}</Tag> : null,
+    },
+    {
       title: 'Identity',
       dataIndex: 'identity',
       key: 'identity',
@@ -80,7 +87,7 @@ export default function ResultsTable({ hits, onSelectHit }: Props) {
     <Table<Hit>
       columns={columns}
       dataSource={hits}
-      rowKey="subject_id"
+      rowKey={(record) => `${record.database || 'unknown'}:${record.subject_id}`}
       size="small"
       sticky
       pagination={false}
@@ -88,7 +95,7 @@ export default function ResultsTable({ hits, onSelectHit }: Props) {
         onClick: () => onSelectHit(record),
         style: { cursor: 'pointer' },
       })}
-      style={{ maxWidth: '100%', overflowX: 'auto' }}
+      scroll={{ x: 'max-content' }}
     />
   )
 }

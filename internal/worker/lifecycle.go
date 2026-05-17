@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,6 +28,7 @@ type Job struct {
 	QueuePos       int               `json:"queue_pos"`
 	Program        string            `json:"program"`
 	Database       string            `json:"database"`
+	Databases      []string          `json:"-"`
 	FastA          string            `json:"-"`
 	AdvancedParams map[string]string `json:"-"`
 	CreatedAt      time.Time         `json:"created_at"`
@@ -47,13 +49,15 @@ func NewJobID() string {
 	return "hxb-" + hex.EncodeToString(b)
 }
 
-func NewJob(program, database string, fasta string, advanced map[string]string) *Job {
+func NewJob(program string, databases []string, fasta string, advanced map[string]string) *Job {
 	now := time.Now()
+	dbStr := strings.Join(databases, ",")
 	return &Job{
 		ID:             NewJobID(),
 		Status:         StatusPending,
 		Program:        program,
-		Database:       database,
+		Database:       dbStr,
+		Databases:      databases,
 		FastA:          fasta,
 		AdvancedParams: advanced,
 		CreatedAt:      now,

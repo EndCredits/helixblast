@@ -1,14 +1,14 @@
-import { Form, Select, Collapse, Input, Button, Space } from 'antd'
+import { Form, Select, Collapse, Input, Button, Space, Tag } from 'antd'
 import type { Database } from '../api/client'
 
 interface Props {
   databases: Database[]
   program: string
-  database: string
+  database: string[]
   template: string
   advancedParams: string
   onProgramChange: (v: string) => void
-  onDatabaseChange: (v: string) => void
+  onDatabaseChange: (v: string[]) => void
   onTemplateChange: (v: string) => void
   onAdvancedParamsChange: (v: string) => void
   onSubmit: () => void
@@ -79,7 +79,22 @@ export default function ParamPanel({
         </Form.Item>
 
         <Form.Item label="Database" style={{ marginBottom: 0 }}>
+          {database.length > 0 && (
+            <Space wrap style={{ marginBottom: 8 }}>
+              {database.map((db) => (
+                <Tag
+                  key={db}
+                  closable
+                  color="blue"
+                  onClose={() => onDatabaseChange(database.filter((d) => d !== db))}
+                >
+                  {db}
+                </Tag>
+              ))}
+            </Space>
+          )}
           <Select
+            mode="multiple"
             value={database}
             onChange={onDatabaseChange}
             options={databases.map((db) => ({
@@ -87,6 +102,7 @@ export default function ParamPanel({
               value: db.name,
             }))}
             style={{ width: '100%' }}
+            placeholder="Select one or more databases..."
             notFoundContent="No databases configured"
           />
         </Form.Item>
