@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     tzdata \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 ENV BLAST_VERSION=2.17.0
@@ -33,5 +34,5 @@ COPY --from=builder /helixblast /usr/local/bin/helixblast
 COPY config.yaml /etc/helixblast/config.yaml
 COPY databases.yaml /etc/helixblast/databases.yaml
 
-EXPOSE 8080
+EXPOSE 39297
 ENTRYPOINT ["helixblast", "--config", "/etc/helixblast/config.yaml"]
