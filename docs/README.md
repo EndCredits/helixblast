@@ -39,6 +39,10 @@ make build
 | [Transcript Lookup](transcript-lookup.md) | GFF3 index, local vs Worker, region extraction, seeking |
 | [Architecture](architecture.md) | Design decisions, binary index format, memory model, concurrency, data flow |
 
+## License
+
+All code in this project is licensed under the MIT License, and the documentation (including the README) is licensed under the CC BY-SA 4.0 License.
+
 ## Changes (2026-05)
 
 | Change | Detail |
