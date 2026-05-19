@@ -1,5 +1,7 @@
 # Build output
 helixblast
+helixblast-prepare
+verify
 /custom-sequence-server
 
 # Frontend

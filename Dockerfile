@@ -34,5 +34,5 @@ COPY --from=builder /helixblast /usr/local/bin/helixblast
 COPY config.yaml /etc/helixblast/config.yaml
 COPY databases.yaml /etc/helixblast/databases.yaml
 
-EXPOSE 39297
+EXPOSE 8080
 ENTRYPOINT ["helixblast", "--config", "/etc/helixblast/config.yaml"]

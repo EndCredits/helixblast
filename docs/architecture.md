@@ -22,6 +22,105 @@ Job state lives in memory (Go maps + channels). No Redis, no PostgreSQL, no SQLi
 
 The trade-off: server restart loses job history. Acceptable for the use case (ad-hoc analysis, no archival requirements).
 
+## Index: Binary vs JSON
+
+HelixBLAST supports two GFF3 index formats, auto-detected at runtime via `transcript.LoadIndexAuto()`:
+
+| | JSON (`.json.gz`) | Binary (`.bin`) |
+|---|---|---|
+| Lookup | Go `map[string]T` O(1) | FNV‑1a hash table, linear probing, O(1) |
+| Load | Full `json.Decode` → all data in RAM | `mmap` → OS pages in on demand |
+| Startup RSS | 60–80 MB | ~0 (virtual address space only) |
+| Steady RSS | ~40 MB (all maps resident) | 5–15 MB (only accessed pages) |
+| File size | 15–30 MB (gzipped) | 22–35 MB (uncompressed) |
+| Build tool | `prepare.js` (Node.js) | `helixblast-prepare` (Go, ~3 MB) |
+
+### `LoadIndexAuto` auto‑detection
+
+```
+databases.yaml: transcript.index_path = refseq.index.json.gz
+
+   1. Check refseq.index.bin exists  →  mmap + hash table
+   2. Fallback                         →  json.Decode full load
+```
+
+No config change required. Place `.bin` alongside the existing `.json.gz` and restart — the server picks it up.
+
+### `helixblast-prepare`
+
+```bash
+go build -o helixblast-prepare ./cmd/prepare
+./helixblast-prepare --json refseq.index.json.gz --out refseq.index.bin
+```
+
+Reads the GFF3 JSON index (produced by `prepare.js`) and writes an mmap‑friendly binary. The binary is ~same size as gzipped JSON, but loads with zero decode cost.
+
+### `verify`
+
+```bash
+go run ./cmd/verify --json refseq.index.json.gz
+# → VERIFIED: JSON and binary indices produce identical results.
+```
+
+Builds a temporary `.bin` from JSON, then compares every entry, family, coord, and Fasta‑index field. Reports exact mismatches.
+
+## Binary Index Format
+
+### Layout
+
+| Offset | Content | Size |
+|--------|---------|------|
+| 0 | `Header` — magic `HXBI`, version=1, entry/family/coord/spatial counts, section offets, string pool off/size | 88 B |
+| `hdr.EntriesOffset` | Entry hash table: `{hash uint64, val uint64}` × `nextPow2(entryCount×2)` | slotCount×16 B |
+| … after hash | Entry records: `{chr_off, start, end, strand_off, type_off, gene_off}` × entryCount | entryCount×24 B |
+| `hdr.FamiliesOffset` | Family hash table | slotCount×16 B |
+| … after hash | Family records: `{tx_count, cds_count, exon_count, _, data_off}` × familyCount | familyCount×24 B |
+| … after records | Family string‑ref data: `uint32` arrays (transcript IDs, CDS IDs, exon IDs) | variable |
+| `hdr.CoordsOffset` | Coord hash table + records + exon/CDS `{start, end}` pair arrays | variable |
+| `hdr.SpatialOffset` | 4‑byte chr count + `SpatialHeader{chr_off, feat_count, data_off}` list + per‑chr `SpatialFeatureRec{start, end, id_off, type_off}` arrays | variable |
+| `hdr.FastaIdxOffset` | 4‑byte chr count + `FastaIndexEntry{chr_off, _, offset}` list | 4 + chrCount×16 B |
+| `hdr.StringPoolOff` | Null‑terminated string pool — all label strings interned here | poolSize |
+
+### Hash table design
+
+- **Hash function**: FNV‑1a 64‑bit (offset basis `14695981039346656037`, prime `1099511628211`)
+- **Collision resolution**: Open addressing with linear probing
+- **Load factor**: ~50% (capacity = `nextPow2(count × 2)`)
+- **Empty slot**: `hash == 0`
+- **Slot value**: high 32 bits = array index, low 32 bits = string pool offset for collision verification
+
+### Struct alignment
+
+All structs include explicit Go alignment padding fields (e.g. `_ uint32` before `uint64`). This ensures `binary.Write` and `unsafe.Pointer` casts use the same byte layout. `binary.Write` outputs packed field‑by‑field; the padding fields carry zero bytes to maintain 8‑byte alignment for subsequent `uint64` fields.
+
+The format is designed for in‑process use via `mmap` + `unsafe` pointer casts — **not** for cross‑language interchange.
+
+### Reader internals
+
+```
+Open(path)
+  → os.Stat → unix.Mmap(PROT_READ, MAP_SHARED)
+  → Header (*Header)(unsafe.Pointer(&data[0]))
+  → verify magic + version
+
+LookupEntry(id)
+  → hashStr(id) → lookupHash (probe slots, verify string)
+  → EntryRecord at computed offset
+  → Entry{Chr, Start, End, Strand, Type, Gene}
+
+LookupFamily(gene)
+  → hashStr(gene) → lookupHash
+  → FamilyRecord → DataOffset
+  → uint32 string refs → stringAt() for each ID
+
+Spatial(chr)
+  → linear scan SpatialHeader list for chr
+  → SpatialFeatureRec array at DataOffset
+
+Close()
+  → unix.Munmap → f.Close
+```
+
 ## Concurrency model
 
 ```
@@ -52,6 +151,25 @@ At startup, the system probes CPU cores and available RAM to compute a safe conc
 - `actual = min(max_jobs, cpu_limit, memory_limit)`
 
 This prevents OOM on low-resource machines. The `/health` endpoint reflects the degraded state.
+
+### Multi‑database BLAST
+
+When `POST /api/v1/jobs` receives `dbs: ["nr", "nt", "refseq"]`, a single Job is created. The worker loops over `job.Databases` sequentially:
+
+```
+for _, dbName := range job.Databases {
+    job.SetProgress("BLAST against " + dbName + " ...")
+    hits, err := p.execFn(ctx, job, dbName)
+    if err != nil {
+        errs = append(errs, {dbName, err.Error()})
+        continue  // don't block remaining databases
+    }
+    tag each hit with dbName
+    collect hits
+}
+```
+
+Results are merged, sorted by `total_score` descending, and trimmed to top 200. Partial errors are included in `BlastResult.Errors` and displayed at the top of the results view.
 
 ## Job lifecycle
 

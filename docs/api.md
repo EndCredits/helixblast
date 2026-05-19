@@ -25,12 +25,13 @@ GET /api/v1/databases
       "name": "nt",
       "type": "nucleotide",
       "description": "NCBI Nucleotide",
-      "last_updated": "2026-05-10"
+      "last_updated": "2026-05-10",
+      "is_chromosome_db": false
     }
   ]
 ```
 
-Returns all entries from `databases.yaml`. Paths and credentials are never exposed.
+Returns all entries from `databases.yaml`. Paths and credentials are never exposed. `is_chromosome_db` controls automatic spatial lookup on BLAST hits.
 
 ## Jobs
 
@@ -43,7 +44,9 @@ Content-Type: application/json
 {
   "fasta": ">seq1\nATGCGTACGTA",
   "program": "blastn",
+  "dbs": ["nr", "nt"],
   "db": "nt",
+  "template": "megablast",
   "advanced_params": { "task": "megablast", "evalue": "1e-10" }
 }
 
@@ -58,9 +61,13 @@ Content-Type: application/json
 | Field | Required | Notes |
 |-------|----------|-------|
 | `fasta` | Yes | Valid FASTA format. Shell metacharacters rejected |
-| `program` | Yes | `blastn`, `blastp`, `blastx`, `tblastn` |
-| `db` | Yes | Matches `name` field in `databases.yaml` |
+| `program` | Yes | `blastn`, `blastp`, `blastx`, `tblastn`, `megablast`, `tblastx` |
+| `dbs` | Yes* | Array of database names. Takes precedence over `db` when both are present |
+| `db` | Yes* | Single database name (shorthand). Used when `dbs` is not provided |
+| `template` | No | Shorthand for `advanced_params.task` |
 | `advanced_params` | No | Key-value map passed as `-key value` to BLAST+. Validated against whitelist |
+
+Either `dbs` or `db` must be provided. When `dbs` contains multiple databases, a single Job runs BLAST against each sequentially. Results are merged, sorted by bitscore, and tagged with per-hit `database`.
 
 Returns `429 Too Many Requests` when the job queue is full.
 
@@ -80,7 +87,7 @@ GET /api/v1/jobs
   ]
 ```
 
-Lists all jobs. `queue_pos` is 0 for running/completed jobs, ≥1 for queued jobs.
+Lists all jobs. `queue_pos` is 0 for running/completed jobs, ≥1 for queued jobs. The `database` field is a comma-joined string when multiple databases were submitted (e.g. `"nr,nt"`).
 
 ### Detail
 
@@ -93,14 +100,19 @@ GET /api/v1/jobs/{id}
     "database": "nt",
     "created_at": "...",
     "updated_at": "...",
-    "result": {
+        "result": {
       "job_id": "hxb-8f3a9c1d",
       "status": "success",
-      "database": "nt",
+      "database": "nr,nt",
+      "databases": ["nr", "nt"],
       "program": "blastn",
+      "errors": [
+        { "database": "nt", "error": "blast execution failed: ..." }
+      ],
       "results": [
         {
           "subject_id": "NR_076022.1",
+          "database": "nr",
           "identity": 98.5,
           "coverage": 100.0,
           "e_value": "1.2e-50",
@@ -119,7 +131,9 @@ GET /api/v1/jobs/{id}
   }
 ```
 
-Results contain the top 20 hits sorted by bitscore. Each hit contains HSP alignments with the query and subject sequences. Coverage is derived from the `qcovs` BLAST output column. Identity, e-value, and bitscore reflect the best HSP per hit.
+Results contain the top 20 hits per database sorted by bitscore, merged across databases and trimmed to the top 200 overall. Each hit carries a `database` tag for transcript/spatial lookups. Each hit contains HSP alignments with the query and subject sequences. Coverage is derived from the `qcovs` BLAST output column. Identity, e-value, and bitscore reflect the best HSP per hit.
+
+The optional `errors` array lists per-database failures that did not block remaining databases. `databases` is the original submission list.
 
 ### Cancel
 

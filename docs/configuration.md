@@ -109,7 +109,7 @@ databases:
 
 | Field | Why |
 |-------|-----|
-| `index_path` | Path to the GFF3 preprocessed index. Supports `.json` and `.json.gz` (auto-detected) |
+| `index_path` | Path to the GFF3 preprocessed index. Supports `.json`, `.json.gz`, and `.bin` (memory‑mapped binary). Auto‑detected — a `.bin` file alongside the configured path is preferred over JSON. |
 | `fasta_dir` | Directory with per-chromosome FASTA files (`Chr01.fa`, `Chr02.fa`, ...). Tried first |
 | `fasta_file` | Single multi-FASTA file containing all chromosomes. Fallback if `fasta_dir` chromosome not found |
 | `source` | For Worker mode: if protein and nucleotide BLAST DBs share one genome, set this to a common name so the Worker looks in a single R2 directory |
@@ -159,3 +159,14 @@ For per-chromosome FASTA files (recommended for Worker), split the genome first:
 ./worker/scripts/split_fasta.sh /path/to/genome.fa output_dir/
 # → output_dir/Chr01.fa.gz, Chr02.fa.gz, ...
 ```
+
+### Binary index (recommended)
+
+For faster startup and lower memory, convert the JSON index to mmap‑friendly binary:
+
+```bash
+make build-prepare
+./helixblast-prepare --json db-name.index.json.gz --out db-name.index.bin
+```
+
+Place the `.bin` alongside the existing `.json.gz` — the server auto‑detects it via `LoadIndexAuto()`. No config change required. The binary index resumes query performance with ~0 startup RSS (OS pages in on demand vs 60–80 MB JSON decode spike).

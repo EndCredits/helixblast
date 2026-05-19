@@ -1,11 +1,14 @@
-.PHONY: build build-frontend dev clean lint lint-go lint-frontend run
+.PHONY: build build-frontend build-prepare dev clean lint lint-go lint-frontend run
 
-build: build-frontend
+build: build-frontend build-prepare
 	go build -o helixblast ./cmd/server
 
 build-frontend:
 	cd web && npm ci && npm run build
 	rm -rf embed/assets embed/index.html && cp -r web/dist/* embed/
+
+build-prepare:
+	go build -o helixblast-prepare ./cmd/prepare
 
 dev:
 	go run ./cmd/server --config config.yaml

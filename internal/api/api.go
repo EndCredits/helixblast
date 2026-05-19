@@ -306,13 +306,14 @@ func (s *Server) handleSpatialLookup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gffData, err := transcript.LoadIndex(dbEntry.Transcript.IndexPath)
+	idx, err := transcript.LoadIndexAuto(dbEntry.Transcript.IndexPath)
 	if err != nil {
 		jsonError(w, http.StatusInternalServerError, fmt.Sprintf("load index: %v", err))
 		return
 	}
+	defer idx.Close()
 
-	result, err := transcript.SpatialLookup(gffData, chr, posInt)
+	result, err := transcript.SpatialLookupV2(idx, chr, posInt)
 	if err != nil {
 		jsonError(w, http.StatusNotFound, err.Error())
 		return
@@ -420,17 +421,19 @@ func (s *Server) fetchSequenceFromWorker(dbEntry *config.DatabaseEntry, res *tra
 }
 
 func (s *Server) localTranscriptLookup(dbEntry *config.DatabaseEntry, transcriptID string) (*transcript.Result, error) {
-	gffData, err := transcript.LoadIndex(dbEntry.Transcript.IndexPath)
+	idx, err := transcript.LoadIndexAuto(dbEntry.Transcript.IndexPath)
 	if err != nil {
 		return nil, fmt.Errorf("load index: %w", err)
 	}
+	defer idx.Close()
 
-	result, err := transcript.Lookup(
-		gffData,
+	result, err := transcript.LookupWithIndex(
+		idx,
 		dbEntry.Name,
 		transcriptID,
 		dbEntry.Transcript.FastaDir,
 		dbEntry.Transcript.FastaFile,
+		idx.FastaIndexMap(),
 	)
 	if err != nil {
 		return nil, err
