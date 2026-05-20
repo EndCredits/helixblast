@@ -10,6 +10,9 @@ build-frontend:
 build-prepare:
 	go build -o helixblast-prepare ./cmd/prepare
 
+build-verify:
+	go build -o verify ./cmd/verify
+
 dev:
 	go run ./cmd/server --config config.yaml
 
