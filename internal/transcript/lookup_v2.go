@@ -78,7 +78,7 @@ func SpatialLookupV2(idx IndexReader, chr string, pos int) (*SpatialResult, erro
 		return nil, err
 	}
 
-	var overlapping []SpatialFeature
+	overlapping := make([]SpatialFeature, 0)
 	var upstream, downstream *SpatialFeature
 
 	for i := range features {

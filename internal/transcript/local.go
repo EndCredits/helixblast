@@ -61,7 +61,7 @@ func SpatialLookup(gffData *GFF3Data, chr string, pos int) (*SpatialResult, erro
 		return nil, fmt.Errorf("chromosome %s not found in spatial index", chr)
 	}
 
-	var overlapping []SpatialFeature
+	overlapping := make([]SpatialFeature, 0)
 	var upstream, downstream *SpatialFeature
 
 	for i := range features {
