@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import * as api from '../api/client'
-import { saveJobMeta, saveJobFull, loadCachedJob } from '../lib/db'
+import { saveJobFull, loadCachedJob } from '../lib/db'
 import type { JobDetail } from '../api/client'
 
 export function useHealth() {
@@ -12,34 +12,7 @@ export function useDatabases() {
   return useQuery({ queryKey: ['databases'], queryFn: api.fetchDatabases })
 }
 
-export function useJobs() {
-  const q = useQuery({
-    queryKey: ['jobs'],
-    queryFn: api.fetchJobs,
-    refetchInterval: (query) => {
-      const jobs = query.state.data
-      if (!jobs || jobs.length === 0) return false
-      const hasActive = jobs.some(
-        (j) => !['success', 'failed', 'cancelled'].includes(j.status),
-      )
-      return hasActive ? 3000 : false
-    },
-  })
-
-  useEffect(() => {
-    const jobs = q.data
-    if (!jobs) return
-    for (const j of jobs) {
-      if (['success', 'failed', 'cancelled'].includes(j.status)) {
-        saveJobMeta(j).catch(() => {})
-      }
-    }
-  }, [q.data])
-
-  return q
-}
-
-export function useJobSSE(jobId: string | null) {
+export function useJobSSE(jobId: string | null, onTerminal?: () => void) {
   const qc = useQueryClient()
   const retryCountRef = useRef(0)
   const doneRef = useRef(false)
@@ -74,9 +47,26 @@ export function useJobSSE(jobId: string | null) {
       if (existing._cached) { setSseState('disconnected'); return }
     }
 
-    retryCountRef.current = 0
-    doneRef.current = false
-    setSseState('connecting')
+    const fallbackToPolling = (id: string) => {
+      const fetchOnce = async () => {
+        try {
+          const cached = await loadCachedJob(id).catch(() => null)
+          if (cached && ['success', 'failed', 'cancelled'].includes(cached.status) && cached.result) {
+            qc.setQueryData(['job', id], cached as JobDetail)
+            if (fallbackTimerRef.current) clearInterval(fallbackTimerRef.current)
+            saveJobFull(cached).catch(() => {})
+            return
+          }
+          if (cached) {
+            qc.setQueryData(['job', id], cached as JobDetail)
+          }
+        } catch {
+          if (fallbackTimerRef.current) clearInterval(fallbackTimerRef.current)
+        }
+      }
+      fetchOnce()
+      fallbackTimerRef.current = setInterval(fetchOnce, 5000)
+    }
 
     const connect = () => {
       stopAll()
@@ -97,8 +87,8 @@ export function useJobSSE(jobId: string | null) {
           if (['success', 'failed', 'cancelled'].includes(data.status)) {
             stopAll(true)
             setSseState('disconnected')
-            qc.invalidateQueries({ queryKey: ['jobs'] })
             saveJobFull(data).catch(() => {})
+            onTerminal?.()
           }
         } catch {}
       }
@@ -133,42 +123,35 @@ export function useJobSSE(jobId: string | null) {
       }
     }
 
-    const fallbackToPolling = (id: string) => {
-      const fetchOnce = async () => {
-        try {
-          const data = await api.fetchJob(id)
-          qc.setQueryData(['job', id], data)
-          if (['success', 'failed', 'cancelled'].includes(data.status)) {
-            if (fallbackTimerRef.current) {
-              clearInterval(fallbackTimerRef.current)
-            }
-          }
-        } catch {
-          if (fallbackTimerRef.current) {
-            clearInterval(fallbackTimerRef.current)
-          }
-        }
-      }
-
-      fetchOnce()
-      fallbackTimerRef.current = setInterval(fetchOnce, 5000)
+    const startStreaming = () => {
+      retryCountRef.current = 0
+      doneRef.current = false
+      setSseState('connecting')
+      connect()
     }
 
-    connect()
+    // Check IndexedDB directly — skip SSE if terminal result already cached
+    loadCachedJob(jobId).then((cached) => {
+      if (cached && ['success', 'failed', 'cancelled'].includes(cached.status) && cached.result) {
+        setSseState('disconnected')
+        return
+      }
+      startStreaming()
+    }).catch(() => {
+      startStreaming()
+    })
 
     return () => {
       stopAll()
     }
-  }, [jobId, qc, getBackoff, stopAll])
+  }, [jobId, qc, getBackoff, stopAll, onTerminal])
 
   return {
     ...useQuery<JobDetail | null>({
       queryKey: ['job', jobId],
       queryFn: async () => {
         if (!jobId) return null
-        const cached = await loadCachedJob(jobId).catch(() => null)
-        if (cached) return cached as JobDetail
-        return api.fetchJob(jobId)
+        return loadCachedJob(jobId).catch(() => null)
       },
       enabled: !!jobId,
       staleTime: Infinity,
@@ -178,21 +161,13 @@ export function useJobSSE(jobId: string | null) {
 }
 
 export function useCreateJob() {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: api.createJob,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['jobs'] })
-    },
   })
 }
 
 export function useCancelJob() {
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: api.cancelJob,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['jobs'] })
-    },
   })
 }

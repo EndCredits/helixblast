@@ -8,11 +8,11 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
+	"github.com/EndCredits/helixblast/internal/blast"
 	"github.com/EndCredits/helixblast/embed"
 	"github.com/EndCredits/helixblast/internal/config"
 	custommw "github.com/EndCredits/helixblast/internal/middleware"
@@ -51,7 +51,6 @@ func NewServer(cfg *config.Config, pool *worker.Pool, dbMgr *config.DatabaseMana
 
 	s.router.Route("/api/v1/jobs", func(r chi.Router) {
 		r.Post("/", s.handleJobCreate)
-		r.Get("/", s.handleJobList)
 		r.Get("/{jobID}", s.handleJobGet)
 		r.Delete("/{jobID}", s.handleJobCancel)
 		r.Get("/{jobID}/events", s.handleJobEvents)
@@ -151,6 +150,20 @@ func (s *Server) handleJobCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := blast.ValidateFASTA(req.FastA, blast.ProgramType(req.Program)); err != nil {
+		jsonError(w, http.StatusBadRequest, fmt.Sprintf("invalid fasta: %v", err))
+		return
+	}
+
+	if req.Template != "" {
+		if req.AdvancedParams == nil {
+			req.AdvancedParams = make(map[string]string)
+		}
+		if _, exists := req.AdvancedParams["task"]; !exists {
+			req.AdvancedParams["task"] = req.Template
+		}
+	}
+
 	for _, dbName := range dbs {
 		if _, err := s.dbMgr.Lookup(dbName); err != nil {
 			jsonError(w, http.StatusBadRequest, fmt.Sprintf("unknown database: %s", dbName))
@@ -170,37 +183,6 @@ func (s *Server) handleJobCreate(w http.ResponseWriter, r *http.Request) {
 		"status":    string(job.GetStatus()),
 		"queue_pos": job.QueuePos,
 	})
-}
-
-func (s *Server) handleJobList(w http.ResponseWriter, r *http.Request) {
-	jobs := s.pool.List()
-
-	type jobItem struct {
-		JobID     string    `json:"job_id"`
-		Status    string    `json:"status"`
-		QueuePos  int       `json:"queue_pos"`
-		Program   string    `json:"program"`
-		Database  string    `json:"database"`
-		CreatedAt time.Time `json:"created_at"`
-	}
-
-	out := make([]jobItem, len(jobs))
-	for i, j := range jobs {
-		out[i] = jobItem{
-			JobID:     j.ID,
-			Status:    string(j.Status),
-			QueuePos:  j.QueuePos,
-			Program:   j.Program,
-			Database:  j.Database,
-			CreatedAt: j.CreatedAt,
-		}
-	}
-
-	if out == nil {
-		out = []jobItem{}
-	}
-
-	jsonResponse(w, http.StatusOK, out)
 }
 
 func (s *Server) handleJobGet(w http.ResponseWriter, r *http.Request) {
@@ -225,7 +207,6 @@ func (s *Server) handleJobCancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusAccepted)
 	jsonResponse(w, http.StatusAccepted, map[string]string{"status": "cancelling"})
 }
 
@@ -265,6 +246,7 @@ func (s *Server) handleJobEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !send() {
+		job.ClearResult()
 		return
 	}
 
@@ -274,6 +256,7 @@ func (s *Server) handleJobEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-subCh:
 			if !send() {
+				job.ClearResult()
 				return
 			}
 		}

@@ -21,7 +21,6 @@ import {
 import {
   useHealth,
   useDatabases,
-  useJobs,
   useJobSSE,
   useCreateJob,
   useCancelJob,
@@ -34,7 +33,7 @@ import ResultsTable from '../components/ResultsTable'
 import AlignmentView from '../components/AlignmentView'
 import type { Hit, BlastResult, TranscriptResult, SpatialResult, JobItem } from '../api/client'
 import { lookupTranscript, fetchSpatial } from '../api/client'
-import { loadJobs, cacheClear } from '../lib/db'
+import { loadJobs, saveJobMeta, cacheClear } from '../lib/db'
 
 const { Content } = Layout
 const { Title, Text } = Typography
@@ -53,7 +52,7 @@ type QueryMode = 'blast' | 'transcript'
 export default function HomePage() {
   const { data: health } = useHealth()
   const { data: databases = [] } = useDatabases()
-  const { data: jobs = [] } = useJobs()
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const createJob = useCreateJob()
   const cancelJob = useCancelJob()
 
@@ -64,7 +63,6 @@ export default function HomePage() {
   const [template, setTemplate] = useState('megablast')
   const [advancedParams, setAdvancedParams] = useState('')
   const [transcriptId, setTranscriptId] = useState('')
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [selectedHit, setSelectedHit] = useState<Hit | null>(null)
   const [transcriptResult, setTranscriptResult] = useState<TranscriptResult | null>(null)
   const [transcriptLoading, setTranscriptLoading] = useState(false)
@@ -73,7 +71,7 @@ export default function HomePage() {
   const spatialRef = useRef<HTMLDivElement>(null)
   const [savedJobs, setSavedJobs] = useState<JobItem[]>([])
 
-  useEffect(() => {
+  const reloadLocalJobs = useCallback(() => {
     loadJobs().then((jobs) =>
       setSavedJobs(jobs.sort((a, b) =>
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
@@ -81,10 +79,14 @@ export default function HomePage() {
     ).catch(() => {})
   }, [])
 
+  useEffect(() => {
+    reloadLocalJobs()
+  }, [reloadLocalJobs])
+
   const resultsRef = useRef<HTMLDivElement>(null)
   const alignmentRef = useRef<HTMLDivElement>(null)
 
-  const { data: jobDetail, isLoading: jobLoading, sseState } = useJobSSE(selectedJobId)
+  const { data: jobDetail, isLoading: jobLoading, sseState } = useJobSSE(selectedJobId, reloadLocalJobs)
 
   const currentDB = databases.find((d) => {
     if (selectedHit?.database) return d.name === selectedHit.database
@@ -160,17 +162,24 @@ export default function HomePage() {
     }
 
     try {
-      await createJob.mutateAsync({
+      const res = await createJob.mutateAsync({
         fasta: fasta.trim(),
         program,
         dbs: database,
         advanced_params: advParams,
       })
+      const now = new Date().toISOString()
+      await saveJobMeta({
+        job_id: res.job_id, status: 'queued', queue_pos: res.queue_pos,
+        program, database: database.join(','), created_at: now,
+      })
+      reloadLocalJobs()
+      setSelectedJobId(res.job_id)
       message.success(`Job submitted (${database.length} database${database.length > 1 ? 's' : ''})`)
     } catch (e: any) {
       message.error(e.message || 'Failed to submit job')
     }
-  }, [fasta, program, database, template, advancedParams, createJob])
+  }, [fasta, program, database, template, advancedParams, createJob, reloadLocalJobs])
 
   const handleTranscriptLookup = useCallback(async (id?: string) => {
     const tid = (id || transcriptId).trim()
@@ -246,19 +255,11 @@ export default function HomePage() {
   const hits = jobResult?.results || []
 
   const mergedJobs = useMemo(() => {
-    const serverIds = new Set(jobs.map((j) => j.job_id))
-    const cachedIds = new Set(savedJobs.map((j) => j.job_id))
-    const all = jobs.map((j) =>
-      cachedIds.has(j.job_id) ? { ...j, _cached: true } : j,
-    )
-    for (const sj of savedJobs) {
-      if (!serverIds.has(sj.job_id)) {
-        all.push(sj)
-      }
-    }
-    all.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    return all
-  }, [jobs, savedJobs])
+    return savedJobs.map((j: any) => {
+      const isTerminal = ['success', 'failed', 'cancelled'].includes(j.status)
+      return { ...j, _cached: isTerminal }
+    })
+  }, [savedJobs])
 
   return (
     <Layout style={{ minHeight: '100vh' }}>

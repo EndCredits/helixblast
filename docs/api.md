@@ -71,24 +71,6 @@ Either `dbs` or `db` must be provided. When `dbs` contains multiple databases, a
 
 Returns `429 Too Many Requests` when the job queue is full.
 
-### List
-
-```
-GET /api/v1/jobs
-→ [
-    {
-      "job_id": "hxb-8f3a9c1d",
-      "status": "running",
-      "queue_pos": 0,
-      "program": "blastn",
-      "database": "nt",
-      "created_at": "2026-05-16T12:00:00Z"
-    }
-  ]
-```
-
-Lists all jobs. `queue_pos` is 0 for running/completed jobs, ≥1 for queued jobs. The `database` field is a comma-joined string when multiple databases were submitted (e.g. `"nr,nt"`).
-
 ### Detail
 
 ```
@@ -155,7 +137,7 @@ data: {"job_id":"...","status":"running","progress":"BLAST search in progress"}
 data: {"job_id":"...","status":"success","result":{...}}
 ```
 
-Server-Sent Events stream. Pushes on every status change (not on a timer). Terminates when the job reaches a terminal state (`success`, `failed`, `cancelled`). The frontend uses `EventSource` with exponential backoff reconnection and 5s HTTP polling fallback after 10 failures.
+Server-Sent Events stream. Pushes on every status change (not on a timer). Terminates when the job reaches a terminal state (`success`, `failed`, `cancelled`). The frontend opens SSE automatically on job creation via `EventSource` with exponential backoff reconnection. After 10 failures, it switches to IndexedDB polling — it never queries the server for job status.
 
 ## Transcript Lookup
 
@@ -222,6 +204,6 @@ Set `is_chromosome_db: true` in `databases.yaml` to enable automatic spatial loo
 
 ## Offline Cache
 
-BLAST results are persisted client-side in the browser's IndexedDB (database `helixblast`, store `cache`). On page load, cached jobs are restored and merged with the server's active job list. Each cached entry expires after 24 hours — expired entries are deleted on next page load.
+BLAST results are persisted client-side in the browser's IndexedDB (database `helixblast`, store `cache`). The job list and all results live exclusively in IndexedDB — the server holds no results after SSE delivery. Each cached entry expires after 24 hours — expired entries are deleted on next page load.
 
 Jobs marked `_cached` appear with a `local` tag in the UI. No cookies, no server-side data persistence — results live only in the user's own browser.

@@ -20,13 +20,17 @@ User enters ID in HelixBLAST UI
         ▼
 GET /api/v1/transcripts?db=X&transcript=Y
         │
-        ├─ databases.yaml has transcript.index_path?
-        │     └─ Yes → internal/transcript/local.go
-        │            Load index.json → resolve ID → f.Seek(chr_offset) → extract range
+        ├─ Loads index via LoadIndexAuto (databases.yaml transcript.index_path)
+        │     .bin exists? → mmap (zero-decode)
+        │     else         → json.Decode
         │
-        └─ config.yaml has database.worker_url?
-              └─ Yes → proxy to Cloudflare Worker
-                     HelixBLAST loads index.json.gz from local storage → extracts from R2 FASTA
+        ├─ Resolves ID → coordinates (chr, start, end, strand)
+        │
+        ├─ Extract sequence (fallback chain):
+        │     local FASTA file/dir? → f.Seek(fasta_index[chr]) → O(1) extract
+        │     no local FASTA + worker_url configured? → proxy to Cloudflare Worker
+        │
+        └─ Returns Result with sequence + gene family
 ```
 
 ## Index format

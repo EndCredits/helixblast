@@ -53,7 +53,7 @@ go build -o helixblast-prepare ./cmd/prepare
 ./helixblast-prepare --json refseq.index.json.gz --out refseq.index.bin
 ```
 
-Reads the GFF3 JSON index (produced by `prepare.js`) and writes an mmap‑friendly binary. The binary is ~same size as gzipped JSON, but loads with zero decode cost.
+Reads the GFF3 JSON index (produced by `prepare.js`) and writes an mmap‑friendly binary. The binary is uncompressed (~same size as decompressed JSON), but loads with zero decode cost.
 
 ### `verify`
 
@@ -102,34 +102,31 @@ Open(path)
   → os.Stat → unix.Mmap(PROT_READ, MAP_SHARED)
   → Header (*Header)(unsafe.Pointer(&data[0]))
   → verify magic + version
-
-LookupEntry(id)
-  → hashStr(id) → lookupHash (probe slots, verify string)
-  → EntryRecord at computed offset
-  → Entry{Chr, Start, End, Strand, Type, Gene}
-
-LookupFamily(gene)
-  → hashStr(gene) → lookupHash
-  → FamilyRecord → DataOffset
-  → uint32 string refs → stringAt() for each ID
-
-Spatial(chr)
-  → linear scan SpatialHeader list for chr
-  → SpatialFeatureRec array at DataOffset
-
-Close()
-  → unix.Munmap → f.Close
 ```
+
+The binary reader implements the `transcript.IndexReader` interface, which bridges JSON and binary backends:
+
+| Method | Returns | Used by |
+|--------|---------|---------|
+| `LookupEntry(id)` | `(*Entry, bool)` | `LookupWithIndex` |
+| `LookupFamily(gene)` | `(*Family, bool)` | `LookupWithIndex` (gene family) |
+| `LookupCoords(id)` | `(*CoordRegions, bool)` | `LookupWithIndex` (exon/CDS coords) |
+| `Spatial(chr)` | `([]SpatialFeat, error)` | `SpatialLookupV2` |
+| `FastaOffset(chr)` | `(int64, bool)` | `extractSequence` |
+| `FastaIndexMap()` | `map[string]int64` | `extractSequence` (bulk) |
+| `Close()` | `error` | Resource cleanup |
+
+`LoadIndexAuto` returns either a `*index.Reader` (binary) or a `*jsonIndexReader` (JSON), both implementing this interface. `LookupWithIndex` and `SpatialLookupV2` accept `IndexReader`, making them format‑agnostic.
 
 ## Concurrency model
 
 ```
-┌─ HTTP Server ─┐
-│  chi router    │
-│  POST /jobs ───┼──→ jobCh (buffered channel)
-│  GET /jobs   ←─┼──← pool.jobs (sync.RWMutex map)
-│  DELETE /job ←─┼──→ job.Cancel() → context cancel
-└────────────────┘
+┌─ HTTP Server ─────────────┐
+│  chi router                │
+│  POST /jobs ───────┼──→ jobCh (buffered channel)
+│  GET /jobs/:id/events ┼──→ job.Subscribe() → SSE stream
+│  DELETE /job ────────┼──→ job.Cancel()
+└───────────────────────┘
         │
 ┌─ Worker Pool ──────────────────────────────────┐
 │  [worker 1] ← jobCh  → BLAST exec              │
@@ -147,7 +144,7 @@ Close()
 At startup, the system probes CPU cores and available RAM to compute a safe concurrency level:
 
 - `cpu_limit = max(1, NumCPU / cpu_per_job)`
-- `memory_limit = <2GB→2, <4GB→5, default 20`
+- `memory_limit = <2GB→2, <4GB→5, default 20` (macOS/non‑Linux: always 4)
 - `actual = min(max_jobs, cpu_limit, memory_limit)`
 
 This prevents OOM on low-resource machines. The `/health` endpoint reflects the degraded state.
@@ -194,13 +191,13 @@ Job.SetStatus() → job.notify() → push to all subscriber channels
 SSE handler ← subCh ←── Subscribe() ─┘
 ```
 
-Each SSE connection creates a subscriber channel on the Job. Status changes push a message to all subscribers. When the job reaches a terminal state or the client disconnects, the channel is cleaned up.
-
-This replaces timer-based polling: the server pushes only when state changes, not on a fixed interval. The frontend uses `EventSource` with exponential backoff reconnection and a 5s HTTP polling fallback after 10 failures.
+Each SSE connection creates a subscriber channel on the Job. Status changes push a message to all subscribers. When the job reaches a terminal state, the SSE handler calls `ClearResult()` and returns. The frontend opens SSE automatically on job creation via `EventSource`, with exponential backoff reconnection (1s→2s→…→30s, max 10 retries). After 10 failures, it switches to IndexedDB polling (5s interval) — it never queries the server directly.
 
 ## BLAST parameter whitelist
 
-At startup, HelixBLAST runs `blastn -help`, `blastp -help`, etc. and parses the output to build a whitelist of valid parameters. User-supplied `advanced_params` are validated against this list — unknown parameters are rejected with `400`. This prevents arbitrary flag injection.
+At startup, HelixBLAST runs `blastn -help`, `blastp -help`, `blastx -help`, `tblastn -help`, `tblastx -help` and parses the output to build a whitelist of valid parameters. User-supplied `advanced_params` are validated against this list — unknown parameters are rejected with `400`. This prevents arbitrary flag injection.
+
+Default BLAST parameters when not overridden: `-max_target_seqs 5000`, `-evalue 10`. The parser further limits results to 20 hits per database (merged to top 200 across databases).
 
 ## Rate limiting
 
@@ -224,27 +221,69 @@ Graceful shutdown on SIGINT/SIGTERM:
 | Framework | React 18 | Declarative UI, mature ecosystem |
 | Build | Vite 6 | ESM-native, fast HMR, tree-shaking |
 | UI | Ant Design 5 | Mature component library, form/table/tag/card |
-| Data fetching | @tanstack/react-query | Auto-polling, cache dedup, background GC |
+| Data fetching | @tanstack/react-query | Cache dedup, background GC, SSE + IndexedDB for jobs |
 | State push | EventSource (SSE) | Server-push for job status, auto-reconnect |
 | Client storage | IndexedDB | Browser-local persistence (24h TTL), survives restarts |
 
-### Client-side persistence
+### IndexedDB‑first data flow
 
-BLAST results are stored in the browser's IndexedDB (database `helixblast`, store `cache`). The server holds results only until the client acknowledges receipt via SSE or polling. At that point, `ClearResult()` is called on the server-side job to free memory. The client-side entry includes a `created_at` timestamp — entries older than 24 hours are automatically purged on next page load.
+The browser's IndexedDB is the **sole source of truth** for all job state. The server holds no results after SSE delivery.
 
-This means:
-- Server memory is only consumed by active (queued/running) jobs
-- Refreshing the page or restarting the server does not lose previously viewed results
-- Each browser sees only its own IndexedDB entries — no user tracking or server-side persistence
+```
+Submit POST /jobs
+  → res.job_id
+  → saveJobMeta(idb)           ← save {job_id, status:"queued", ...}
+  → reloadLocalJobs(idb)       ← refresh UI list
+  → setSelectedJobId
+  → loadCachedJob(idb)          ← guard: if terminal+result, skip SSE
+  → EventSource(/jobs/{id}/events)  ← SSE auto-opens
+
+SSE stream
+  → queued → running → success
+  → saveJobFull(idb)           ← overwrite with full result
+  → onTerminal → reloadLocalJobs(idb)
+  → server: ClearResult()      ← free memory
+
+Page reload
+  → loadJobs(idb)
+  → mergedJobs = savedJobs     ← no server fetch
+  → click job → loadCachedJob(idb) → guard → SSE or skip
+```
+
+**No polling.** The job list is built entirely from IndexedDB. SSE delivers real-time status for the selected job. The `GET /api/v1/jobs` endpoint has been removed — it no longer exists.
+
+**No cross-device sharing.** Each browser's IndexedDB is isolated. A job submitted on device A is invisible on device B. The `api.fetchJob(jobId)` fallback has been removed — if a job isn't in local IndexedDB, it doesn't exist for that client.
+
+### SSE resume and fallback
+
+```
+SSE onerror
+  → check react‑query cache for terminal → exit
+  → retry < 10: exponential backoff (1s → 2s → ... → 30s)
+  → retry > 10: switch to IndexedDB polling
+                 → loadCachedJob(idb) every 5s
+                 → if terminal+result: stop, saveFull, reloadList
+                 → never queries server
+```
+
+### Server‑side result lifecycle
+
+```
+worker: SetResult → SetStatus(Success) → notify()
+SSE:    send(snap) → Flush → snap.Status terminal? → ClearResult()
+        ClearResult sets job.Result = nil — memory freed immediately
+```
+
+`SetResult` is called **before** `SetStatus(Success)` to ensure the SSE snapshot includes the result. `ClearResult()` is called after the SSE handler confirms delivery (either on initial `send()` or on subscriber notification). The `GET /api/v1/jobs/{id}` handler also calls `ClearResult()` after serving the snapshot, for API consumers.
+
+### Job list architecture (removed)
+
+The frontend previously merged a server‑side job list (`GET /api/v1/jobs`) with IndexedDB cache and ran a 3s polling loop for active jobs. This has been removed in favor of the IndexedDB‑only model above.
 
 ### Spatial search
 
 When a BLAST database uses chromosome sequences (`is_chromosome_db: true`), clicking a hit triggers `/api/v1/spatial` which queries a pre-built interval index in the GFF3 data. The index maps each chromosome to a sorted array of features (gene, mRNA, CDS, exon). Overlapping features and the nearest upstream/downstream genes are resolved in a single linear scan. Clicking any gene/transcript/CDS ID jumps to Transcript Lookup to view the full sequence.
 
-### States managed without a state library
+### State management
 
-The app uses local state (`useState`) + react-query cache. No Redux, no Zustand. Query keys: `['health']`, `['databases']`, `['jobs']`, `['job', id]`.
-
-### Lazy polling
-
-`useJobs()` only polls `GET /api/v1/jobs` when there's at least one non-terminal job. When all jobs are complete, polling stops. The `refetchInterval` is a function of query state, not a constant.
+The app uses local React state (`useState`) + react‑query cache for server data (health, databases, job detail). No Redux, no Zustand. The job list is managed via `useState(savedJobs)` backed by IndexedDB — not react‑query.

@@ -91,12 +91,6 @@ export async function fetchDatabases(): Promise<Database[]> {
   return res.json()
 }
 
-export async function fetchJobs(): Promise<JobItem[]> {
-  const res = await fetch(`${BASE}/jobs`)
-  if (!res.ok) throw new Error('Failed to fetch jobs')
-  return res.json()
-}
-
 export async function fetchJob(id: string): Promise<JobDetail> {
   const res = await fetch(`${BASE}/jobs/${id}`)
   if (!res.ok) throw new Error('Job not found')

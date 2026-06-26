@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -99,7 +100,9 @@ func (p *Pool) Cancel(id string) error {
 
 	job.Cancel()
 
-	if status == StatusQueued || status == StatusPending {
+	// Re-check: only set cancelled if still in queued/pending (not already transitioned by worker)
+	current := job.GetStatus()
+	if current == StatusQueued || current == StatusPending {
 		job.SetStatus(StatusCancelled)
 	}
 
@@ -193,6 +196,11 @@ func (p *Pool) worker(id int) {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 		job.SetCancel(cancel)
 
+		// Close race window: if Cancel() was called before SetCancel, invoke cancel now
+		if job.IsCancelling() {
+			cancel()
+		}
+
 		allHits := make([]blast.Hit, 0)
 		var errs []blast.DatabaseError
 
@@ -229,7 +237,11 @@ func (p *Pool) worker(id int) {
 
 		if len(allHits) == 0 && len(job.Databases) > 0 && len(errs) == len(job.Databases) {
 			job.SetStatus(StatusFailed)
-			job.SetError(errs[0].Error)
+			errMsgs := make([]string, len(errs))
+			for i, e := range errs {
+				errMsgs[i] = e.Database + ": " + e.Error
+			}
+			job.SetError("all databases failed: " + strings.Join(errMsgs, "; "))
 			p.updateQueuePositions()
 			continue
 		}
@@ -261,9 +273,9 @@ func (p *Pool) worker(id int) {
 			continue
 		}
 
+		job.SetResult(json.RawMessage(data))
 		job.SetStatus(StatusSuccess)
 		job.SetProgress("")
-		job.SetResult(json.RawMessage(data))
 		p.updateQueuePositions()
 	}
 }
