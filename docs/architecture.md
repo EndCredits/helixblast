@@ -195,7 +195,7 @@ Each SSE connection creates a subscriber channel on the Job. Status changes push
 
 ## BLAST parameter whitelist
 
-At startup, HelixBLAST runs `blastn -help`, `blastp -help`, `blastx -help`, `tblastn -help`, `tblastx -help` and parses the output to build a whitelist of valid parameters. User-supplied `advanced_params` are validated against this list — unknown parameters are rejected with `400`. This prevents arbitrary flag injection.
+At startup, HelixBLAST runs `blastn -help`, `blastp -help`, `blastx -help`, `tblastn -help`, `tblastx -help` and parses the output to build a whitelist of valid parameters. User-supplied `advanced_params` are validated against this list at **job submission time** — unknown parameters are rejected with `400 Bad Request` and the job never enters the queue. This prevents arbitrary flag injection.
 
 Default BLAST parameters when not overridden: `-max_target_seqs 5000`, `-evalue 10`. The parser further limits results to 20 hits per database (merged to top 200 across databases).
 

@@ -65,7 +65,7 @@ Content-Type: application/json
 | `dbs` | Yes* | Array of database names. Takes precedence over `db` when both are present |
 | `db` | Yes* | Single database name (shorthand). Used when `dbs` is not provided |
 | `template` | No | Shorthand for `advanced_params.task` |
-| `advanced_params` | No | Key-value map passed as `-key value` to BLAST+. Validated against whitelist |
+| `advanced_params` | No | Key-value map passed as `-key value` to BLAST+. Validated against the parameter whitelist at submission — unknown keys are rejected with `400` |
 
 Either `dbs` or `db` must be provided. When `dbs` contains multiple databases, a single Job runs BLAST against each sequentially. Results are merged, sorted by bitscore, and tagged with per-hit `database`.
 
@@ -79,7 +79,7 @@ GET /api/v1/jobs/{id}
     "job_id": "hxb-8f3a9c1d",
     "status": "success",
     "program": "blastn",
-    "database": "nt",
+    "database": "nr,nt",
     "created_at": "...",
     "updated_at": "...",
         "result": {
@@ -132,7 +132,7 @@ Soft cancel: sets a cancellation flag. BLAST runs to completion but the result i
 GET /api/v1/jobs/{id}/events
 Content-Type: text/event-stream
 
-data: {"job_id":"...","status":"running","progress":"BLAST search in progress"}
+data: {"job_id":"...","status":"running","progress":"BLAST against nr ..."}
 
 data: {"job_id":"...","status":"success","result":{...}}
 ```

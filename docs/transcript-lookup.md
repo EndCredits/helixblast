@@ -98,7 +98,7 @@ The scanned sequence covers `(start - 5000)` to `end` to include 5kb upstream. E
 
 `worker/src/index.js` is a thin I/O pipe. It does NOT load or parse the GFF3 index — that stays on the HelixBLAST server to stay under the 10ms Cloudflare Workers CPU limit (free plan).
 
-The Worker only exposes `/sequence`:
+The Worker exposes two endpoints:
 
 ```
 GET /sequence?db=&chr=&start=&end=&strand=
@@ -106,13 +106,20 @@ GET /sequence?db=&chr=&start=&end=&strand=
   → DecompressionStream('gzip') → stream decompress
   → extractRange(start, end) → sliding window, stops when range collected
   → return { sequence: "ATGC..." }
+
+GET /health
+  → { status: "ok", worker: "helixblast-gene" }
 ```
 
-Per-chromosome FASTA files only — no multi-FASTA fallback. Split with:
+Two FASTA layouts are supported:
+
+1. **Per-chromosome files** (`fasta/<db>/<chr>.fa.gz`) — the primary layout. Split with:
 
 ```bash
 ./worker/scripts/split_fasta.sh /path/to/genome.fa output_dir/
 ```
+
+2. **Single multi-FASTA fallback** (`fasta/<db>/genome.fa.gz`) — when the per-chromosome object does not exist, the Worker falls back to a genome-wide file and scans for the target chromosome header (see `extractRange(obj, targetChr, ...)` in `worker/src/index.js`).
 
 The Worker uses a sliding window approach — for standard lines (≤120bp), line-level skipping. For long lines, character-by-character scanning. In both cases, stops reading as soon as the range is collected. `DecompressionStream` is a native API that doesn't count against JS CPU time.
 

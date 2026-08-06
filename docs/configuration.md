@@ -38,7 +38,7 @@ s3:
   secret_key: ""
 ```
 
-Only required when `storage.type = s3`. Uses S3-compatible protocol — works with Cloudflare R2, MinIO, AWS S3. The `endpoint` must include the protocol (`https://`).
+Only required when `storage.type = s3`. Uses S3-compatible protocol — works with Cloudflare R2, MinIO, AWS S3. The `endpoint` should include the protocol (e.g. `https://`); the config loader only checks that it is non-empty, so include the scheme to ensure the S3 client connects correctly.
 
 ### blast
 
@@ -52,7 +52,7 @@ blast:
 | Field | Default | Why |
 |-------|---------|-----|
 | `path` | `""` | Where to find `blastn`, `blastp`, etc. Empty means search `$PATH` |
-| `max_jobs` | `20` | Hard limit on concurrent BLAST processes. Prevents system overload |
+| `max_jobs` | `20` (code default; sample files set `5`) | Hard limit on concurrent BLAST processes. Prevents system overload. Actual concurrency is capped further by CPU/memory auto-detection (see below) |
 | `cpu_per_job` | `2` | Threads allocated to each BLAST process. Higher = faster per-job, fewer concurrent jobs |
 
 ### Resource auto-detection
@@ -146,7 +146,7 @@ The GFF3 index is pre-built with `prepare.js`:
 node worker/scripts/prepare.js input.gff3 db-name /path/to/genome.fa
 ```
 
-This produces `db-name.index.json` (for local use) and `db-name.index.json.gz` (for Cloudflare Worker). The index contains:
+This produces `db-name.index.json` and `db-name.index.json.gz` — the plain JSON for inspection/debugging, the gzipped JSON for the HelixBLAST server (both are loaded by the server via `LoadIndexAuto`; configure `transcript.index_path` to the gzipped file). The Cloudflare Worker does **not** consume the index at all — it only reads FASTA from R2. The index contains:
 
 - **entries** — every GFF3 ID (gene, mRNA, CDS, exon) resolved to its parent mRNA's genomic coordinates via Parent chain traversal
 - **families** — gene → transcript/CDS/exon ID lists for inter-query
