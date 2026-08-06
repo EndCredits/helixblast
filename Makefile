@@ -1,6 +1,6 @@
-.PHONY: build build-frontend build-prepare dev clean lint lint-go lint-frontend run
+.PHONY: build build-frontend build-prepare build-index build-verify dev clean lint lint-go lint-frontend run
 
-build: build-frontend build-prepare
+build: build-frontend build-prepare build-index
 	go build -o helixblast ./cmd/server
 
 build-frontend:
@@ -9,6 +9,9 @@ build-frontend:
 
 build-prepare:
 	go build -o helixblast-prepare ./cmd/prepare
+
+build-index:
+	go build -o helixblast-index ./cmd/indexer
 
 build-verify:
 	go build -o verify ./cmd/verify

@@ -35,10 +35,10 @@ GET /api/v1/transcripts?db=X&transcript=Y
 
 ## Index format
 
-The index is pre-built from a GFF3 annotation file and the genome FASTA using `worker/scripts/prepare.js`:
+The index is pre-built from a GFF3 annotation file and the genome FASTA using `helixblast-index` (Go, replaces the former Node.js `prepare.js`):
 
 ```bash
-node worker/scripts/prepare.js input.gff3 db-name /path/to/genome.fa
+./helixblast-index --gff3 input.gff3 --fasta genome.fa --out db-name.index.bin
 ```
 
 Output structure:
@@ -75,7 +75,7 @@ mRNA  ID=g1.t1  Parent=g1        → resolves to gene coordinates
 CDS   ID=g1.t1.CDS1  Parent=g1.t1 → resolves to mRNA coordinates through chain
 ```
 
-`prepare.js` walks each entry up the parent chain until it finds a gene or mRNA with genomic coordinates. Every ID in the file maps to its parent mRNA's chromosome and position — so querying by gene, mRNA, CDS, or exon all return the same genomic locus.
+`helixblast-index` walks each entry up the parent chain until it finds a gene or mRNA with genomic coordinates. Every ID in the file maps to its parent mRNA's chromosome and position — so querying by gene, mRNA, CDS, or exon all return the same genomic locus.
 
 ### Why `fasta_index` is mandatory
 

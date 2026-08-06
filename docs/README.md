@@ -27,6 +27,7 @@ make build
 | Binary | Source | Purpose |
 |--------|--------|---------|
 | `helixblast` | `cmd/server` | Full BLAST web server (REST + SSE + embedded frontend) |
+| `helixblast-index` | `cmd/indexer` | GFF3 + genome FASTA → binary index (replaces Node.js `prepare.js`) |
 | `helixblast-prepare` | `cmd/prepare` | Standalone index builder: JSON → binary, ~3 MB, no BLAST deps |
 | `verify` | `cmd/verify` | Builds temp binary from JSON and compares all entries/families/coords/fasta-index for equivalence |
 

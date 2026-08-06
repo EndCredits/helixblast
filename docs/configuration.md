@@ -140,18 +140,21 @@ When `source` is set, the Worker request uses that name instead of the BLAST DB 
 
 ## Generating the transcript index
 
-The GFF3 index is pre-built with `prepare.js`:
+The GFF3 index is pre-built with `helixblast-index` (Go, replaces the former Node.js `prepare.js`):
 
 ```bash
-node worker/scripts/prepare.js input.gff3 db-name /path/to/genome.fa
+make build-index
+./helixblast-index --gff3 input.gff3 --fasta genome.fa --out db-name.index.bin
+# optional: --json db-name.index.json.gz also writes the intermediate JSON
 ```
 
-This produces `db-name.index.json` and `db-name.index.json.gz` — the plain JSON for inspection/debugging, the gzipped JSON for the HelixBLAST server (both are loaded by the server via `LoadIndexAuto`; configure `transcript.index_path` to the gzipped file). The Cloudflare Worker does **not** consume the index at all — it only reads FASTA from R2. The index contains:
+The command writes a memory‑mapped binary index directly. With `--json` it additionally produces the intermediate JSON (`db-name.index.json.gz`) for inspection/debugging or the `verify` tool. The Cloudflare Worker does **not** consume the index at all — it only reads FASTA from R2. The index contains:
 
 - **entries** — every GFF3 ID (gene, mRNA, CDS, exon) resolved to its parent mRNA's genomic coordinates via Parent chain traversal
 - **families** — gene → transcript/CDS/exon ID lists for inter-query
 - **coords** — per-transcript exon/CDS coordinate arrays for sequence extraction
 - **fasta_index** — per-chromosome byte offsets in the FASTA file for O(1) seeking
+- **spatial** — per-chromosome sorted features for interval lookup
 
 For per-chromosome FASTA files (recommended for Worker), split the genome first:
 
@@ -160,9 +163,9 @@ For per-chromosome FASTA files (recommended for Worker), split the genome first:
 # → output_dir/Chr01.fa.gz, Chr02.fa.gz, ...
 ```
 
-### Binary index (recommended)
+### Legacy JSON → bin path (kept for compatibility)
 
-For faster startup and lower memory, convert the JSON index to mmap‑friendly binary:
+The `helixblast-prepare` tool still converts an existing JSON index to the mmap binary, for setups that already have a JSON index:
 
 ```bash
 make build-prepare

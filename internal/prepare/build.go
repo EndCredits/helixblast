@@ -23,7 +23,12 @@ func BuildBinaryIndex(jsonPath, binPath string) error {
 	if err != nil {
 		return fmt.Errorf("load json index: %w", err)
 	}
+	return BuildBinaryIndexFromData(gff, binPath)
+}
 
+// BuildBinaryIndexFromData writes a binary index from an in-memory GFF3Data.
+// Shared by the JSON path (BuildBinaryIndex) and the GFF3 path (indexer).
+func BuildBinaryIndexFromData(gff *transcript.GFF3Data, binPath string) error {
 	b := &builder{pool: make(map[string]uint32)}
 
 	out, err := os.Create(binPath)

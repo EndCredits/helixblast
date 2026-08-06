@@ -33,7 +33,7 @@ HelixBLAST supports two GFF3 index formats, auto-detected at runtime via `transc
 | Startup RSS | 60–80 MB | ~0 (virtual address space only) |
 | Steady RSS | ~40 MB (all maps resident) | 5–15 MB (only accessed pages) |
 | File size | 15–30 MB (gzipped) | 22–35 MB (uncompressed) |
-| Build tool | `prepare.js` (Node.js) | `helixblast-prepare` (Go, ~3 MB) |
+| Build tool | `helixblast-index` (Go, GFF3+FASTA → index) | `helixblast-prepare` (Go, JSON → bin) |
 
 ### `LoadIndexAuto` auto‑detection
 
@@ -46,14 +46,24 @@ databases.yaml: transcript.index_path = refseq.index.json.gz
 
 No config change required. Place `.bin` alongside the existing `.json.gz` and restart — the server picks it up.
 
-### `helixblast-prepare`
+### `helixblast-index` (GFF3 → index)
+
+```bash
+make build-index
+./helixblast-index --gff3 annotations.gff3 --fasta genome.fa --out refseq.index.bin
+# optional: --json refseq.index.json.gz keeps an intermediate JSON for debugging/verify
+```
+
+Parses GFF3 + genome FASTA (replacing the former Node.js `prepare.js`) and writes a binary index directly. Semantics match the old pipeline: Parent-chain coordinate resolution, gene families, per-transcript exon/CDS coords, spatial features, and FASTA byte offsets.
+
+### `helixblast-prepare` (JSON → bin)
 
 ```bash
 go build -o helixblast-prepare ./cmd/prepare
 ./helixblast-prepare --json refseq.index.json.gz --out refseq.index.bin
 ```
 
-Reads the GFF3 JSON index (produced by `prepare.js`) and writes an mmap‑friendly binary. The binary is uncompressed (~same size as decompressed JSON), but loads with zero decode cost.
+Reads a GFF3 JSON index (e.g. produced by `helixblast-index --json`) and writes an mmap‑friendly binary. The binary is uncompressed (~same size as decompressed JSON), but loads with zero decode cost.
 
 ### `verify`
 
