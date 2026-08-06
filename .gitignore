@@ -1,6 +1,7 @@
 # Build output
 helixblast
 helixblast-prepare
+helixblast-index
 verify
 /custom-sequence-server
 
