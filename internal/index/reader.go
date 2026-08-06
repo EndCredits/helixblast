@@ -76,7 +76,7 @@ func (r *Reader) stringAt(off uint32) string {
 }
 
 func (r *Reader) lookupHash(hashOff uint64, count uint32, id string) (int, bool) {
-	h := hashStr(id)
+	h := HashStr(id)
 	slots := unsafe.Slice((*HashSlot)(unsafe.Pointer(&r.data[hashOff])), count)
 	pos := h % uint64(count)
 	probed := uint32(0)

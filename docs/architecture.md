@@ -28,7 +28,7 @@ HelixBLAST supports two GFF3 index formats, auto-detected at runtime via `transc
 
 | | JSON (`.json.gz`) | Binary (`.bin`) |
 |---|---|---|
-| Lookup | Go `map[string]T` O(1) | FNV‑1a hash table, linear probing, O(1) |
+| Lookup | Go `map[string]T` O(1) | xxh3 hash table, linear probing, O(1) |
 | Load | Full `json.Decode` → all data in RAM | `mmap` → OS pages in on demand |
 | Startup RSS | 60–80 MB | ~0 (virtual address space only) |
 | Steady RSS | ~40 MB (all maps resident) | 5–15 MB (only accessed pages) |
@@ -83,7 +83,7 @@ Builds a temporary `.bin` from JSON, then compares every entry, family, coord, a
 
 ### Hash table design
 
-- **Hash function**: FNV‑1a 64‑bit (offset basis `14695981039346656037`, prime `1099511628211`)
+- **Hash function**: xxh3 64‑bit (via `github.com/zeebo/xxh3`); hash value 0 is remapped to 1 because `hash == 0` is the empty-slot sentinel
 - **Collision resolution**: Open addressing with linear probing
 - **Load factor**: ~50% (capacity = `nextPow2(count × 2)`)
 - **Empty slot**: `hash == 0`

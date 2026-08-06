@@ -206,7 +206,7 @@ func (b *builder) buildEntryHash(entries []indexedEntry) []index.HashSlot {
 	cap := index.NextPow2(uint32(len(entries)) * 2)
 	slots := make([]index.HashSlot, cap)
 	for i, e := range entries {
-		h := index.HashStrFNV(e.id)
+		h := index.HashStr(e.id)
 		pos := h % uint64(cap)
 		for slots[pos].Hash != 0 {
 			pos = (pos + 1) % uint64(cap)
@@ -221,7 +221,7 @@ func (b *builder) buildFamilyHash(families []indexedFamily) []index.HashSlot {
 	cap := index.NextPow2(uint32(len(families)) * 2)
 	slots := make([]index.HashSlot, cap)
 	for i, f := range families {
-		h := index.HashStrFNV(f.gene)
+		h := index.HashStr(f.gene)
 		pos := h % uint64(cap)
 		for slots[pos].Hash != 0 {
 			pos = (pos + 1) % uint64(cap)
@@ -236,7 +236,7 @@ func (b *builder) buildCoordHash(coords []indexedCoord) []index.HashSlot {
 	cap := index.NextPow2(uint32(len(coords)) * 2)
 	slots := make([]index.HashSlot, cap)
 	for i, c := range coords {
-		h := index.HashStrFNV(c.id)
+		h := index.HashStr(c.id)
 		pos := h % uint64(cap)
 		for slots[pos].Hash != 0 {
 			pos = (pos + 1) % uint64(cap)

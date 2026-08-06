@@ -3,11 +3,13 @@ package index
 import (
 	"encoding/binary"
 	"math/bits"
+
+	"github.com/zeebo/xxh3"
 )
 
 const (
 	Magic   = "HXBI"
-	Version = 1
+	Version = 2 // v2: FNV-1a replaced with xxh3; v1 indices must be rebuilt
 )
 
 var byteOrder = binary.LittleEndian
@@ -115,15 +117,16 @@ func ByteOrder() binary.ByteOrder {
 	return byteOrder
 }
 
-func HashStrFNV(s string) uint64 {
-	return hashStr(s)
+// HashStr returns the 64-bit hash used for all hash tables in the index.
+// It uses xxh3 with a zero-remap: hash value 0 is reserved as the empty-slot
+// sentinel, so any xxh3 result of 0 is remapped to 1.
+func HashStr(s string) uint64 {
+	return hashNonZero(xxh3.HashString(s))
 }
 
-func hashStr(s string) uint64 {
-	var h uint64 = 14695981039346656037
-	for i := 0; i < len(s); i++ {
-		h ^= uint64(s[i])
-		h *= 1099511628211
+func hashNonZero(h uint64) uint64 {
+	if h == 0 {
+		return 1
 	}
 	return h
 }

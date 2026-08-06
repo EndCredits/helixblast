@@ -6,7 +6,7 @@ Light, modern BLAST web service — single binary, zero external dependencies.
 - **Multi-Database BLAST**: Search against multiple databases in one submission. Worker runs each DB sequentially, merges and sorts results, tags every hit with its source database. Partial errors per database are collected and displayed.
 - **Transcript Lookup**: GFF3-based gene/transcript/CDS coordinate resolution and sequence extraction, backed by local FASTA or Cloudflare Worker + R2. Standalone transcript lookup disabled in the UI when multiple databases are selected (the `/api/v1/transcripts` endpoint always requires a single `db`).
 - **Spatial Search**: Chromosome interval lookup. Click a BLAST hit to see overlapping genes and flanking features.
-- **Binary Index (mmap)**: GFF3 annotation stored as a memory‑mapped binary with FNV‑1a hash tables. Zero‑decode startup — RSS starts near zero, grows only as query‑touched pages are paged in. Auto‑detected alongside JSON, no config change required.
+- **Binary Index (mmap)**: GFF3 annotation stored as a memory‑mapped binary with xxh3 hash tables. Zero‑decode startup — RSS starts near zero, grows only as query‑touched pages are paged in. Auto‑detected alongside JSON, no config change required.
 - **Offline cache**: BLAST results persist in browser IndexedDB (24h TTL). The job list and all results live exclusively in IndexedDB — the server holds no results after SSE delivery. Each browser is an isolated workspace (no cross-device job sharing).
 
 ## Quickstart
@@ -53,7 +53,7 @@ All code in this project is licensed under the MIT License, and the documentatio
 | Transcript mode UX | Jobs card hidden when `queryMode === 'transcript'`. |
 | Hit-scoped DB resolution | `currentDB`, transcript, and spatial lookups resolve database from `selectedHit?.database`. |
 | Results table scroll | `scroll={{ x: 'max-content' }}` — horizontal scroll for all columns. |
-| Binary index (mmap) | Zero‑decode GFF3 index: FNV‑1a hash tables + sorted spatial arrays, memory‑mapped. Auto‑detected alongside JSON. |
+| Binary index (mmap) | Zero‑decode GFF3 index: xxh3 hash tables + sorted spatial arrays, memory‑mapped. Auto‑detected alongside JSON. |
 | `helixblast-prepare` + `verify` | Standalone CLI tools for binary index build and equivalence verification. |
 | **IndexedDB‑first architecture** | Job list and results live entirely in browser IndexedDB. Submit → save meta → SSE auto‑opens → terminal → saveFull(idb) → server clears result. No polling, no server‑side job list queries. SSE fallback checks IndexedDB before any network request. Each device isolated. |
 | Server: `SetResult` before `SetStatus` | Eliminated race where SSE delivered `{status:"success", result:null}`. |
