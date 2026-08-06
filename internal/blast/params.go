@@ -68,6 +68,17 @@ func (pw *ParamWhitelist) Len() int {
 	return len(pw.params)
 }
 
+// NewParamWhitelist returns a whitelist containing exactly the given keys.
+// Useful for tests and programmatic construction where running `-help` on
+// real BLAST binaries is not possible.
+func NewParamWhitelist(keys []string) *ParamWhitelist {
+	pw := &ParamWhitelist{params: make(map[string]bool, len(keys))}
+	for _, k := range keys {
+		pw.params[k] = true
+	}
+	return pw
+}
+
 var helpFlagRe = regexp.MustCompile(`(?m)^\s*-(?:\w*-)?(\w[\w-]*)`)
 
 func parseHelpFlags(executable string) ([]string, error) {

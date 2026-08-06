@@ -135,7 +135,7 @@ func main() {
 	jan.Start()
 	defer jan.Stop()
 
-	srv := api.NewServer(cfg, pool, dm)
+	srv := api.NewServer(cfg, pool, dm, whitelist)
 
 	httpServer := &http.Server{
 		Addr:    srv.ListenAddr(),

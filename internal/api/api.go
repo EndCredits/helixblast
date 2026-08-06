@@ -21,20 +21,22 @@ import (
 )
 
 type Server struct {
-	router  chi.Router
-	pool    *worker.Pool
-	dbMgr   *config.DatabaseManager
-	config  *config.Config
-	version string
+	router    chi.Router
+	pool      *worker.Pool
+	dbMgr     *config.DatabaseManager
+	config    *config.Config
+	whitelist *blast.ParamWhitelist
+	version   string
 }
 
-func NewServer(cfg *config.Config, pool *worker.Pool, dbMgr *config.DatabaseManager) *Server {
+func NewServer(cfg *config.Config, pool *worker.Pool, dbMgr *config.DatabaseManager, whitelist *blast.ParamWhitelist) *Server {
 	s := &Server{
-		router:  chi.NewRouter(),
-		pool:    pool,
-		dbMgr:   dbMgr,
-		config:  cfg,
-		version: "0.1.0",
+		router:    chi.NewRouter(),
+		pool:      pool,
+		dbMgr:     dbMgr,
+		config:    cfg,
+		whitelist: whitelist,
+		version:   "0.1.0",
 	}
 
 	s.router.Use(chimw.RequestID)
@@ -161,6 +163,18 @@ func (s *Server) handleJobCreate(w http.ResponseWriter, r *http.Request) {
 		}
 		if _, exists := req.AdvancedParams["task"]; !exists {
 			req.AdvancedParams["task"] = req.Template
+		}
+	}
+
+	// Validate advanced params against the BLAST parameter whitelist at
+	// submission time. Unknown parameters are rejected with 400 — the job
+	// never enters the queue. A nil whitelist (build failure) allows all.
+	if s.whitelist != nil {
+		for key := range req.AdvancedParams {
+			if !s.whitelist.IsAllowed(key) {
+				jsonError(w, http.StatusBadRequest, fmt.Sprintf("invalid blast parameter: -%s", key))
+				return
+			}
 		}
 	}
 
