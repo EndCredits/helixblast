@@ -68,7 +68,7 @@ export default function ParamPanel({
 
   return (
     <Form layout="vertical">
-      <Space direction="vertical" style={{ width: '100%' }} size="middle">
+      <Space orientation="vertical" style={{ width: '100%' }} size="middle">
         <Form.Item label="Program" style={{ marginBottom: 0 }}>
           <Select
             value={program}

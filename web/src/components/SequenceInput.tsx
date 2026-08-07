@@ -10,7 +10,7 @@ interface Props {
 
 export default function SequenceInput({ value, onChange, error }: Props) {
   return (
-    <Space direction="vertical" style={{ width: '100%' }}>
+    <Space orientation="vertical" style={{ width: '100%' }}>
       <TextArea
         rows={8}
         value={value}
@@ -18,10 +18,10 @@ export default function SequenceInput({ value, onChange, error }: Props) {
         placeholder={'>seq1 Description\nATGCGTACGTAGCTAGCTAGCTAGC\n>seq2 Description\nATGCGTACGTAGCTAGCTAGCTAGC'}
         style={{ fontFamily: 'monospace', fontSize: 13 }}
       />
-      {error && <Alert message={error} type="error" showIcon />}
+      {error && <Alert title={error} type="error" showIcon />}
       {value && !error && (
         <Alert
-          message="FASTA format detected"
+          title="FASTA format detected"
           type="success"
           showIcon
           style={{ padding: '4px 12px' }}

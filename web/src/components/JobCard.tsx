@@ -34,7 +34,7 @@ export default function JobCard({ job, onSelect, onCancel, selected }: Props) {
         opacity: job.status === 'cancelled' ? 0.6 : 1,
       }}
     >
-      <Space direction="vertical" style={{ width: '100%' }} size={4}>
+      <Space orientation="vertical" style={{ width: '100%' }} size={4}>
         <Space style={{ justifyContent: 'space-between', width: '100%' }}>
           <Text code>{job.job_id}</Text>
           <Tag icon={meta.icon} color={meta.color}>{job.status}</Tag>

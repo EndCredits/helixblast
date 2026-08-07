@@ -16,7 +16,7 @@ import {
   Select,
   Form,
   Collapse,
-  message,
+  App as AntApp,
 } from 'antd'
 import {
   useHealth,
@@ -50,6 +50,7 @@ function validateFASTA(input: string): string | null {
 type QueryMode = 'blast' | 'transcript'
 
 export default function HomePage() {
+  const { message } = AntApp.useApp()
   const { data: health } = useHealth()
   const { data: databases = [] } = useDatabases()
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
@@ -267,7 +268,7 @@ export default function HomePage() {
       <Content style={{ padding: 24, maxWidth: 1400, margin: '0 auto', width: '100%' }}>
         {health?.status === 'degraded' && (
           <Alert
-            message="System running in low-resource mode"
+            title="System running in low-resource mode"
             description="The server has limited CPU/memory. Job throughput may be reduced."
             type="warning"
             showIcon
@@ -279,7 +280,7 @@ export default function HomePage() {
           {/* Left: Input Panel */}
           <Col xs={24} lg={10}>
             <Card title={<Title level={5} style={{ margin: 0 }}>Submit Job</Title>}>
-              <Space direction="vertical" style={{ width: '100%' }} size="middle">
+              <Space orientation="vertical" style={{ width: '100%' }} size="middle">
                 <Radio.Group
                   value={queryMode}
                   onChange={(e) => {
@@ -294,7 +295,7 @@ export default function HomePage() {
                 </Radio.Group>
 
                 {queryMode === 'transcript' && (
-                  <Space direction="vertical" style={{ width: '100%' }} size="small">
+                  <Space orientation="vertical" style={{ width: '100%' }} size="small">
                     <Form.Item label="Database" style={{ marginBottom: 0 }}>
                       <Select
                         value={database.length === 1 ? database[0] : undefined}
@@ -380,7 +381,7 @@ export default function HomePage() {
               {mergedJobs.length === 0 ? (
                 <Text type="secondary">No jobs submitted yet</Text>
               ) : (
-                <Space direction="vertical" style={{ width: '100%' }} size="small">
+                <Space orientation="vertical" style={{ width: '100%' }} size="small">
                   <div key={mergedJobs[0].job_id}>
                     {(mergedJobs[0] as any)._cached && (
                       <Tag color="default" style={{ marginBottom: 4, fontSize: 10 }}>local</Tag>
@@ -401,7 +402,7 @@ export default function HomePage() {
                           key: 'older',
                           label: `Older jobs (${mergedJobs.length - 1})`,
                           children: (
-                            <Space direction="vertical" style={{ width: '100%' }} size="small">
+                            <Space orientation="vertical" style={{ width: '100%' }} size="small">
                               {mergedJobs.slice(1).map((job) => (
                                 <div key={job.job_id}>
                                   {(job as any)._cached && (
@@ -452,9 +453,9 @@ export default function HomePage() {
                 )}
 
                 {queryMode === 'transcript' && spatialResult && !transcriptResult && (
-                  <Space direction="vertical" style={{ width: '100%' }} size="small">
+                  <Space orientation="vertical" style={{ width: '100%' }} size="small">
                     <Alert
-                      message={`${spatialResult.chromosome}:${spatialResult.position}`}
+                      title={`${spatialResult.chromosome}:${spatialResult.position}`}
                       description={
                         spatialResult.features.length > 0
                           ? `${spatialResult.features.length} overlapping feature(s)`
@@ -507,9 +508,9 @@ export default function HomePage() {
                 )}
 
                 {queryMode === 'transcript' && transcriptResult && (
-                  <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                  <Space orientation="vertical" style={{ width: '100%' }} size="middle">
                     <Alert
-                      message={
+                      title={
                         <span>
                           {transcriptResult.chromosome}:{transcriptResult.start}-{transcriptResult.end}{' '}
                           <Tag color="blue">{transcriptResult.type}</Tag>
@@ -518,7 +519,7 @@ export default function HomePage() {
                       }
                       description={
                         transcriptResult.related ? (
-                          <Space direction="vertical" size={2}>
+                          <Space orientation="vertical" size={2}>
                             <span><Text type="secondary">Gene:</Text> <Text code>{transcriptResult.gene_id}</Text></span>
                             {transcriptResult.related.transcripts.length > 0 && (
                               <span>
@@ -569,7 +570,7 @@ export default function HomePage() {
                       ].filter(r => r.len > 0)
 
                       return (
-                        <Space direction="vertical" style={{ width: '100%' }} size="small">
+                        <Space orientation="vertical" style={{ width: '100%' }} size="small">
                           {regionPanels.map((r) => (
                             <Card
                               key={r.label}
@@ -620,20 +621,20 @@ export default function HomePage() {
                     {jobLoading && <Spin />}
 
                     {jobDetail?.status === 'failed' && (
-                      <Alert message="Job Failed" description={jobDetail.error} type="error" showIcon />
+                      <Alert title="Job Failed" description={jobDetail.error} type="error" showIcon />
                     )}
 
                     {jobDetail?.status === 'cancelled' && (
-                      <Alert message="Job Cancelled" type="warning" showIcon />
+                      <Alert title="Job Cancelled" type="warning" showIcon />
                     )}
 
                     {jobDetail?.status === 'running' && (
-                      <Alert message={jobDetail.progress || 'Running...'} type="info" showIcon icon={<Spin />} />
+                      <Alert title={jobDetail.progress || 'Running...'} type="info" showIcon icon={<Spin />} />
                     )}
 
                     {jobDetail?.status === 'queued' && (
                       <Alert
-                        message={`Queued (position #${jobDetail.queue_pos})`}
+                        title={`Queued (position #${jobDetail.queue_pos})`}
                         type="info"
                         showIcon
                       />
@@ -643,9 +644,9 @@ export default function HomePage() {
                       <Alert
                         type="warning"
                         showIcon
-                        message={`${jobResult.errors.length} database(s) failed`}
+                        title={`${jobResult.errors.length} database(s) failed`}
                         description={
-                          <Space direction="vertical" size={2} style={{ width: '100%' }}>
+                          <Space orientation="vertical" size={2} style={{ width: '100%' }}>
                             {jobResult.errors.map((e) => (
                               <Text key={e.database} type="danger">
                                 <Text strong>{e.database}:</Text> {e.error}
@@ -679,7 +680,7 @@ export default function HomePage() {
                             />
                             {currentDB?.is_chromosome_db && spatialResult && (
                               <div ref={spatialRef}>
-                              <Space direction="vertical" style={{ width: '100%' }} size="small">
+                              <Space orientation="vertical" style={{ width: '100%' }} size="small">
                                 <Divider />
                                 <Text strong>
                                   {spatialResult.features.length > 0

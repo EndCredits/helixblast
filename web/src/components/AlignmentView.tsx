@@ -130,7 +130,7 @@ export default function AlignmentView({ hit, onLookupTranscript, onLookupRegion 
   }
 
   return (
-    <Space direction="vertical" style={{ width: '100%' }} size="small">
+    <Space orientation="vertical" style={{ width: '100%' }} size="small">
       <Space style={{ justifyContent: 'space-between', width: '100%' }}>
         <Text strong>
           {hit.subject_id} — {hit.identity.toFixed(1)}% identity, E-value: {hit.e_value}
