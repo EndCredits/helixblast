@@ -316,7 +316,8 @@ export default function HomePage() {
                       />
                     </Form.Item>
                     <Button
-                      type="primary"
+                      color="primary"
+                      variant="solid"
                       onClick={() => handleTranscriptLookup()}
                       loading={transcriptLoading}
                       disabled={database.length !== 1}
@@ -360,7 +361,7 @@ export default function HomePage() {
               title={<Title level={5} style={{ margin: 0 }}>Jobs</Title>}
               extra={
                 savedJobs.length > 0 && (
-                  <Button size="small" danger onClick={() => {
+                  <Button size="small" color="danger" onClick={() => {
                     cacheClear().then(() => {
                       setSavedJobs([])
                       setSelectedJobId(null)
@@ -575,7 +576,7 @@ export default function HomePage() {
                               size="small"
                               title={<Text strong>{r.label} <Text type="secondary">({r.len} bp)</Text></Text>}
                               extra={
-                                <Button size="small" type="link" onClick={() => {
+                                <Button size="small" variant="link" onClick={() => {
                                   const blob = new Blob([`>${transcriptResult.transcript_id}_${r.label}\n${r.seq.match(/.{1,60}/g)?.join('\n')}`], { type: 'text/plain' })
                                   const url = URL.createObjectURL(blob)
                                   const a = document.createElement('a')

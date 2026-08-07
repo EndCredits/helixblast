@@ -151,7 +151,8 @@ export default function ParamPanel({
         />
 
         <Button
-          type="primary"
+          color="primary"
+          variant="solid"
           size="large"
           onClick={onSubmit}
           loading={loading}

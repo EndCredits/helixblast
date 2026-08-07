@@ -57,7 +57,7 @@ export default function JobCard({ job, onSelect, onCancel, selected }: Props) {
 
         {['queued', 'running'].includes(job.status) && (
           <Button
-            danger
+            color="danger"
             size="small"
             onClick={(e) => {
               e.stopPropagation()
