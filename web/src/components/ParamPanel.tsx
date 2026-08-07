@@ -1,4 +1,5 @@
 import { Form, Select, Collapse, Input, Button, Space, Tag } from 'antd'
+import { useTranslation } from 'react-i18next'
 import type { Database } from '../api/client'
 
 interface Props {
@@ -58,6 +59,7 @@ export default function ParamPanel({
   loading,
 }: Props) {
   const currentTasks = taskTemplates[program] || taskTemplates.blastn
+  const { t } = useTranslation()
   const defaultTask = currentTasks[0]?.label || ''
 
   const handleProgramChange = (v: string) => {
@@ -69,7 +71,7 @@ export default function ParamPanel({
   return (
     <Form layout="vertical">
       <Space orientation="vertical" style={{ width: '100%' }} size="middle">
-        <Form.Item label="Program" style={{ marginBottom: 0 }}>
+        <Form.Item label={t('home.paramPanel.program')} style={{ marginBottom: 0 }}>
           <Select
             value={program}
             onChange={handleProgramChange}
@@ -78,7 +80,7 @@ export default function ParamPanel({
           />
         </Form.Item>
 
-        <Form.Item label="Database" style={{ marginBottom: 0 }}>
+        <Form.Item label={t('home.paramPanel.database')} style={{ marginBottom: 0 }}>
           {database.length > 0 && (
             <Space wrap style={{ marginBottom: 8 }}>
               {database.map((db) => (
@@ -102,16 +104,16 @@ export default function ParamPanel({
               value: db.name,
             }))}
             style={{ width: '100%' }}
-            placeholder="Select one or more databases..."
-            notFoundContent="No databases configured"
+            placeholder={t('home.paramPanel.dbPlaceholder')}
+            notFoundContent={t('home.paramPanel.noDb')}
           />
         </Form.Item>
 
-        <Form.Item label="Task Preset" style={{ marginBottom: 0 }}>
+        <Form.Item label={t('home.paramPanel.taskPreset')} style={{ marginBottom: 0 }}>
           <Select
             value={template || defaultTask}
             onChange={onTemplateChange}
-            placeholder="Select a task preset..."
+            placeholder={t('home.paramPanel.taskPlaceholder')}
             options={currentTasks.map((t) => ({
               label: t.label,
               value: t.label,
@@ -120,7 +122,7 @@ export default function ParamPanel({
             style={{ width: '100%' }}
             optionRender={(option) => (
               <Space>
-                <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                <span style={{ fontFamily: "'Fira Code', monospace", fontWeight: 600 }}>
                   {option.data.label}
                 </span>
                 <span style={{ color: '#888', fontSize: 12 }}>
@@ -136,14 +138,14 @@ export default function ParamPanel({
           items={[
             {
               key: 'advanced',
-              label: 'Advanced Parameters',
+              label: t('home.paramPanel.advanced'),
               children: (
                 <Input.TextArea
                   rows={3}
                   value={advancedParams}
                   onChange={(e) => onAdvancedParamsChange(e.target.value)}
                   placeholder="-word_size 11 -evalue 1e-5 -max_target_seqs 500"
-                  style={{ fontFamily: 'monospace', fontSize: 13 }}
+                  style={{ fontFamily: "'Fira Code', monospace", fontSize: 13 }}
                 />
               ),
             },
@@ -158,7 +160,7 @@ export default function ParamPanel({
           loading={loading}
           block
         >
-          Submit BLAST Job
+          {t('home.paramPanel.submit')}
         </Button>
       </Space>
     </Form>

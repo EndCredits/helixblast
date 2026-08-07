@@ -89,7 +89,49 @@ export async function cacheClear() {
   const db = await open()
   return new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite')
-    tx.objectStore(STORE).clear()
+    const store = tx.objectStore(STORE)
+    const req = store.getAll()
+    req.onsuccess = () => {
+      const entries = (req.result || []) as Entry[]
+      for (const e of entries) {
+        if (e.type !== 'setting') {
+          store.delete(e.key)
+        }
+      }
+    }
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
+// Settings are simple key-value pairs persisted in IndexedDB (same store,
+// type 'setting'), NOT subject to the 24h TTL that applies to jobs.
+// Unlike localStorage, they survive across browsers/devices on the same origin
+// and follow the project's IndexedDB-first convention.
+
+export async function getSetting(key: string): Promise<any | null> {
+  const db = await open()
+  return new Promise((resolve) => {
+    const tx = db.transaction(STORE, 'readonly')
+    const req = tx.objectStore(STORE).get(`setting:${key}`)
+    req.onsuccess = () => {
+      const entry = req.result as Entry | undefined
+      if (entry && entry.type === 'setting') {
+        resolve(entry.data)
+      } else {
+        resolve(null)
+      }
+    }
+    req.onerror = () => resolve(null)
+  })
+}
+
+export async function setSetting(key: string, data: any): Promise<void> {
+  const db = await open()
+  const e: Entry = { key: `setting:${key}`, type: 'setting', data, time: Date.now() }
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite')
+    tx.objectStore(STORE).put(e)
     tx.oncomplete = () => resolve()
     tx.onerror = () => reject(tx.error)
   })

@@ -33,17 +33,19 @@ import ResultsTable from '../components/ResultsTable'
 import AlignmentView from '../components/AlignmentView'
 import type { Hit, BlastResult, TranscriptResult, SpatialResult, JobItem } from '../api/client'
 import { lookupTranscript, fetchSpatial } from '../api/client'
-import { loadJobs, saveJobMeta, cacheClear } from '../lib/db'
+import { loadJobs, saveJobMeta, cacheClear, getSetting, setSetting } from '../lib/db'
+import { useTranslation } from 'react-i18next'
+import i18n from '../i18n'
 
 const { Content } = Layout
 const { Title, Text } = Typography
 
 function validateFASTA(input: string): string | null {
   const trimmed = input.trim()
-  if (!trimmed) return 'Sequence input is required'
-  if (!trimmed.startsWith('>')) return 'Input must start with a FASTA header (>)'
+  if (!trimmed) return i18n.t('home.validation.empty')
+  if (!trimmed.startsWith('>')) return i18n.t('home.validation.noHeader')
   const lines = trimmed.split('\n').filter((l) => l.trim())
-  if (lines.length < 2) return 'FASTA must contain a header and at least one sequence line'
+  if (lines.length < 2) return i18n.t('home.validation.tooShort')
   return null
 }
 
@@ -51,6 +53,7 @@ type QueryMode = 'blast' | 'transcript'
 
 export default function HomePage() {
   const { message } = AntApp.useApp()
+  const { t } = useTranslation()
   const { data: health } = useHealth()
   const { data: databases = [] } = useDatabases()
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
@@ -71,6 +74,7 @@ export default function HomePage() {
   const [spatialResult, setSpatialResult] = useState<SpatialResult | null>(null)
   const spatialRef = useRef<HTMLDivElement>(null)
   const [savedJobs, setSavedJobs] = useState<JobItem[]>([])
+  const [dismissedLowResource, setDismissedLowResource] = useState(false)
 
   const reloadLocalJobs = useCallback(() => {
     loadJobs().then((jobs) =>
@@ -83,6 +87,12 @@ export default function HomePage() {
   useEffect(() => {
     reloadLocalJobs()
   }, [reloadLocalJobs])
+
+  useEffect(() => {
+    getSetting('dismissedLowResource').then((v) => {
+      if (v) setDismissedLowResource(true)
+    }).catch(() => {})
+  }, [])
 
   const resultsRef = useRef<HTMLDivElement>(null)
   const alignmentRef = useRef<HTMLDivElement>(null)
@@ -144,7 +154,7 @@ export default function HomePage() {
       return
     }
     if (database.length === 0) {
-      message.error('Select at least one database')
+      message.error(t('home.errors.selectDatabase'))
       return
     }
 
@@ -176,31 +186,31 @@ export default function HomePage() {
       })
       reloadLocalJobs()
       setSelectedJobId(res.job_id)
-      message.success(`Job submitted (${database.length} database${database.length > 1 ? 's' : ''})`)
+      message.success(t('home.errors.jobSubmitted', { count: database.length }))
     } catch (e: any) {
-      message.error(e.message || 'Failed to submit job')
+      message.error(e.message || t('home.errors.submitFailed'))
     }
   }, [fasta, program, database, template, advancedParams, createJob, reloadLocalJobs])
 
   const handleTranscriptLookup = useCallback(async (id?: string) => {
     const tid = (id || transcriptId).trim()
     if (!tid) {
-      message.error('Please enter a transcript ID')
+      message.error(t('home.errors.enterTranscriptId'))
       return
     }
     const lookupDB = id ? selectedHit?.database : (database.length === 1 ? database[0] : undefined)
     if (!lookupDB) {
       message.error(
         id
-          ? 'Database not available for this hit'
+          ? t('home.errors.dbNotAvailable')
           : database.length === 0
-            ? 'No database selected'
-            : 'Select exactly one database for transcript lookup (multiple selected currently)',
+            ? t('home.errors.noDbSelected')
+            : t('home.errors.selectOneDb'),
       )
       return
     }
     if (id) {
-      message.loading({ content: `Looking up ${tid} ...`, key: 'tx-lookup', duration: 0 })
+      message.loading({ content: t('home.errors.lookingUp', { id: tid }), key: 'tx-lookup', duration: 0 })
     }
     setTranscriptLoading(true)
     try {
@@ -213,12 +223,12 @@ export default function HomePage() {
         setSelectedHit(null)
       }
       setSpatialResult(null)
-      message.success({ content: `Found: ${result.chromosome}:${result.start}-${result.end} (${result.strand})`, key: 'tx-lookup' })
+      message.success({ content: t('home.errors.found', { loc: `${result.chromosome}:${result.start}-${result.end}`, strand: result.strand }), key: 'tx-lookup' })
       setTimeout(() => {
         resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
       }, 100)
     } catch (e: any) {
-      message.error({ content: e.message || 'Transcript lookup failed', key: 'tx-lookup' })
+      message.error({ content: e.message || t('home.errors.lookupFailed'), key: 'tx-lookup' })
     } finally {
       setTranscriptLoading(false)
     }
@@ -227,7 +237,7 @@ export default function HomePage() {
   const handleSpatialLookup = useCallback(async (chr: string, pos: number) => {
     const lookupDB = selectedHit?.database || (database.length === 1 ? database[0] : undefined)
     if (!lookupDB) {
-      message.error('No database available for spatial lookup')
+      message.error(t('home.errors.noDbSpatial'))
       return
     }
     try {
@@ -236,7 +246,7 @@ export default function HomePage() {
       setQueryMode('transcript')
       setTranscriptResult(null)
     } catch (e: any) {
-      message.error(e.message || 'Spatial lookup failed')
+      message.error(e.message || t('home.errors.spatialFailed'))
     }
   }, [database, selectedHit?.database])
 
@@ -244,9 +254,9 @@ export default function HomePage() {
     async (id: string) => {
       try {
         await cancelJob.mutateAsync(id)
-        message.info('Job cancellation requested')
+        message.info(t('home.errors.cancelRequested'))
       } catch (e: any) {
-        message.error(e.message || 'Failed to cancel job')
+        message.error(e.message || t('home.errors.cancelFailed'))
       }
     },
     [cancelJob],
@@ -263,23 +273,33 @@ export default function HomePage() {
   }, [savedJobs])
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout
+      style={{
+        minHeight: '100vh',
+        background: 'radial-gradient(1200px 600px at 85% -10%, rgba(14,116,144,0.07), transparent), #f6f8fa',
+      }}
+    >
       <Header />
       <Content style={{ padding: 24, maxWidth: 1400, margin: '0 auto', width: '100%' }}>
-        {health?.status === 'degraded' && (
+        {health?.status === 'degraded' && !dismissedLowResource && (
           <Alert
-            title="System running in low-resource mode"
-            description="The server has limited CPU/memory. Job throughput may be reduced."
+            title={t('home.degraded.title')}
             type="warning"
             showIcon
-            style={{ marginBottom: 16 }}
+            closable={{
+              onClose: () => {
+                setDismissedLowResource(true)
+                setSetting('dismissedLowResource', true).catch(() => {})
+              },
+            }}
+            style={{ marginBottom: 16, padding: '5px 12px', fontSize: 12, borderRadius: 12 }}
           />
         )}
 
         <Row gutter={24}>
           {/* Left: Input Panel */}
           <Col xs={24} lg={10}>
-            <Card title={<Title level={5} style={{ margin: 0 }}>Submit Job</Title>}>
+            <Card title={<Title level={5} style={{ margin: 0 }}>{t('home.paramPanel.submit')}</Title>}>
               <Space orientation="vertical" style={{ width: '100%' }} size="middle">
                 <Radio.Group
                   value={queryMode}
@@ -290,13 +310,13 @@ export default function HomePage() {
                   optionType="button"
                   buttonStyle="solid"
                 >
-                  <Radio.Button value="blast">BLAST Search</Radio.Button>
-                  <Radio.Button value="transcript">Transcript Lookup</Radio.Button>
+                  <Radio.Button value="blast">{t('home.mode.blast')}</Radio.Button>
+                  <Radio.Button value="transcript">{t('home.mode.transcript')}</Radio.Button>
                 </Radio.Group>
 
                 {queryMode === 'transcript' && (
                   <Space orientation="vertical" style={{ width: '100%' }} size="small">
-                    <Form.Item label="Database" style={{ marginBottom: 0 }}>
+                    <Form.Item label={t('home.paramPanel.database')} style={{ marginBottom: 0 }}>
                       <Select
                         value={database.length === 1 ? database[0] : undefined}
                         onChange={(v) => setDatabase(v ? [v] : [])}
@@ -305,14 +325,14 @@ export default function HomePage() {
                           value: db.name,
                         }))}
                         style={{ width: '100%' }}
-                        notFoundContent="No databases configured"
+                        notFoundContent={t('home.transcript.notFound')}
                       />
                     </Form.Item>
-                    <Form.Item label="Transcript ID" style={{ marginBottom: 0 }}>
+                    <Form.Item label={t('home.transcript.label')} style={{ marginBottom: 0 }}>
                       <Input
                         value={transcriptId}
                         onChange={(e) => setTranscriptId(e.target.value)}
-                        placeholder="e.g. LOC112737024"
+                        placeholder={t('home.transcript.placeholder')}
                         onPressEnter={() => handleTranscriptLookup()}
                       />
                     </Form.Item>
@@ -325,10 +345,10 @@ export default function HomePage() {
                       block
                     >
                       {database.length === 1
-                        ? 'Lookup Sequence'
+                        ? t('home.transcript.lookup')
                         : database.length === 0
-                          ? 'Select a database first'
-                          : 'Only one database allowed for transcript lookup'}
+                          ? t('home.transcript.selectDbFirst')
+                          : t('home.transcript.onlyOneDb')}
                     </Button>
                   </Space>
                 )}
@@ -359,7 +379,7 @@ export default function HomePage() {
           <Col xs={24} lg={14}>
             {queryMode === 'blast' && (
             <Card
-              title={<Title level={5} style={{ margin: 0 }}>Jobs</Title>}
+              title={<Title level={5} style={{ margin: 0 }}>{t('home.jobs.title')}</Title>}
               extra={
                 savedJobs.length > 0 && (
                   <Button size="small" color="danger" onClick={() => {
@@ -369,22 +389,22 @@ export default function HomePage() {
                       setSelectedHit(null)
                       setTranscriptResult(null)
                       setSpatialResult(null)
-                      message.success('Local cache cleared')
-                    }).catch(() => message.error('Failed to clear cache'))
+                      message.success(t('home.jobs.cacheCleared'))
+                    }).catch(() => message.error(t('home.jobs.cacheClearFailed')))
                   }}>
-                    Clear local ({savedJobs.length})
+                    {t('home.jobs.clear', { count: savedJobs.length })}
                   </Button>
                 )
               }
               style={{ marginBottom: 24 }}
             >
               {mergedJobs.length === 0 ? (
-                <Text type="secondary">No jobs submitted yet</Text>
+                <Text type="secondary">{t('home.jobs.empty')}</Text>
               ) : (
                 <Space orientation="vertical" style={{ width: '100%' }} size="small">
                   <div key={mergedJobs[0].job_id}>
                     {(mergedJobs[0] as any)._cached && (
-                      <Tag color="default" style={{ marginBottom: 4, fontSize: 10 }}>local</Tag>
+                      <Tag color="default" style={{ marginBottom: 4, fontSize: 10 }}>{t('home.jobs.local')}</Tag>
                     )}
                     <JobCard
                       job={mergedJobs[0]}
@@ -400,13 +420,13 @@ export default function HomePage() {
                       items={[
                         {
                           key: 'older',
-                          label: `Older jobs (${mergedJobs.length - 1})`,
+                          label: t('home.jobs.olderJobs', { count: mergedJobs.length - 1 }),
                           children: (
                             <Space orientation="vertical" style={{ width: '100%' }} size="small">
                               {mergedJobs.slice(1).map((job) => (
                                 <div key={job.job_id}>
                                   {(job as any)._cached && (
-                                    <Tag color="default" style={{ marginBottom: 4, fontSize: 10 }}>local</Tag>
+                                    <Tag color="default" style={{ marginBottom: 4, fontSize: 10 }}>{t('home.jobs.local')}</Tag>
                                   )}
                                   <JobCard
                                     job={job}
@@ -431,25 +451,25 @@ export default function HomePage() {
               <Card
                 title={
                   <Space>
-                    <Title level={5} style={{ margin: 0 }}>Results</Title>
+                    <Title level={5} style={{ margin: 0 }}>{t('home.results.title')}</Title>
                     {selectedJobId && <Text code>{selectedJobId}</Text>}
                   </Space>
                 }
                 extra={
                   <Space>
                     {selectedJobId && sseState !== 'connected' && sseState !== 'disconnected' && (
-                      <Tag color="warning">{sseState === 'reconnecting' ? 'Reconnecting...' : 'Connecting...'}</Tag>
+                      <Tag color="warning">{sseState === 'reconnecting' ? t('home.results.reconnecting') : t('home.results.connecting')}</Tag>
                     )}
                     {selectedJobId && (
                       <Button size="small" onClick={() => { setSelectedJobId(null); setSelectedHit(null) }}>
-                        Close
+                        {t('home.results.close')}
                       </Button>
                     )}
                   </Space>
                 }
               >
                 {!selectedJobId && !transcriptResult && (
-                  <Text type="secondary">Select a job from the list above to view results</Text>
+                  <Text type="secondary">{t('home.jobs.selectHint')}</Text>
                 )}
 
                 {queryMode === 'transcript' && spatialResult && !transcriptResult && (
@@ -458,8 +478,8 @@ export default function HomePage() {
                       title={`${spatialResult.chromosome}:${spatialResult.position}`}
                       description={
                         spatialResult.features.length > 0
-                          ? `${spatialResult.features.length} overlapping feature(s)`
-                          : 'No overlapping features — showing flanking genes'
+                          ? t('home.spatial.overlapping', { count: spatialResult.features.length })
+                          : t('home.spatial.noFeatures')
                       }
                       type={spatialResult.features.length > 0 ? 'info' : 'warning'}
                       showIcon
@@ -477,12 +497,12 @@ export default function HomePage() {
                       </Card>
                     ))}
                     {spatialResult.features.length > 0 && (
-                      <Text type="secondary" style={{ fontSize: 11 }}>Click an ID to look up transcript / CDS sequence</Text>
+                      <Text type="secondary" style={{ fontSize: 11 }}>{t('home.transcript.regions.clickId')}</Text>
                     )}
                     {spatialResult.upstream && (
                       <Card key={spatialResult.upstream.id} size="small">
                         <Space>
-                          <Tag>↑ upstream ({spatialResult.position - spatialResult.upstream.end} bp)</Tag>
+                          <Tag>↑ {t('home.spatial.upstream')} ({spatialResult.position - spatialResult.upstream.end} bp)</Tag>
                           <Text code style={{ cursor: 'pointer' }}
                             onClick={() => handleTranscriptLookup(spatialResult.upstream!.id)}>
                             {spatialResult.upstream.id}
@@ -494,7 +514,7 @@ export default function HomePage() {
                     {spatialResult.downstream && (
                       <Card key={spatialResult.downstream.id} size="small">
                         <Space>
-                          <Tag>↓ downstream ({spatialResult.downstream.start - spatialResult.position} bp)</Tag>
+                          <Tag>↓ {t('home.spatial.downstream')} ({spatialResult.downstream.start - spatialResult.position} bp)</Tag>
                           <Text code style={{ cursor: 'pointer' }}
                             onClick={() => handleTranscriptLookup(spatialResult.downstream!.id)}>
                             {spatialResult.downstream.id}
@@ -503,7 +523,7 @@ export default function HomePage() {
                         </Space>
                       </Card>
                     )}
-                    <Button size="small" onClick={() => setSpatialResult(null)}>Clear</Button>
+                    <Button size="small" onClick={() => setSpatialResult(null)}>{t('home.spatial.clear')}</Button>
                   </Space>
                 )}
 
@@ -514,16 +534,16 @@ export default function HomePage() {
                         <span>
                           {transcriptResult.chromosome}:{transcriptResult.start}-{transcriptResult.end}{' '}
                           <Tag color="blue">{transcriptResult.type}</Tag>
-                          <Tag>{transcriptResult.strand === '+' ? 'Forward' : 'Reverse'}</Tag>
+                          <Tag>{transcriptResult.strand === '+' ? t('home.transcript.strand.forward') : t('home.transcript.strand.reverse')}</Tag>
                         </span>
                       }
                       description={
                         transcriptResult.related ? (
                           <Space orientation="vertical" size={2}>
-                            <span><Text type="secondary">Gene:</Text> <Text code>{transcriptResult.gene_id}</Text></span>
+                            <span><Text type="secondary">{t('home.transcript.regions.gene')}</Text> <Text code>{transcriptResult.gene_id}</Text></span>
                             {transcriptResult.related.transcripts.length > 0 && (
                               <span>
-                                <Text type="secondary">Transcripts:</Text>{' '}
+                                <Text type="secondary">{t('home.transcript.regions.transcripts')}</Text>{' '}
                                 {transcriptResult.related.transcripts.map((t, i) => (
                                   <span key={t}>
                                     <Text code style={{ cursor: 'pointer' }}
@@ -536,11 +556,11 @@ export default function HomePage() {
                               </span>
                             )}
                             {transcriptResult.related.cdss.length > 0 && (
-                              <span><Text type="secondary">CDSs:</Text> {transcriptResult.related.cdss.length} regions</span>
+                              <span><Text type="secondary">{t('home.transcript.regions.cdss')}</Text> {transcriptResult.related.cdss.length} regions</span>
                             )}
                           </Space>
                         ) : (
-                          <Text type="secondary">Gene: {transcriptResult.gene_id}</Text>
+                          <Text type="secondary">{t('home.transcript.regions.gene')} {transcriptResult.gene_id}</Text>
                         )
                       }
                       type="success"
@@ -562,11 +582,11 @@ export default function HomePage() {
                       const cds = cdss.map(c => extractRegion(geneSeq, c.start, c.end)).join('')
 
                       const regionPanels = [
-                        { label: '5 kb Upstream', seq: up5, len: up5.length },
-                        { label: '2 kb Upstream (proximal)', seq: up2, len: up2.length },
-                        { label: `Gene Body (${geneSeq.length} bp)`, seq: geneSeq, len: geneSeq.length },
-                        { label: `mRNA (exons joined, ${mrna.length} bp)`, seq: mrna, len: mrna.length },
-                        { label: `CDS (joined, ${cds.length} bp)`, seq: cds, len: cds.length },
+                        { label: t('home.transcript.regions.up5'), seq: up5, len: up5.length },
+                        { label: t('home.transcript.regions.up2'), seq: up2, len: up2.length },
+                        { label: t('home.transcript.regions.geneBody', { len: geneSeq.length }), seq: geneSeq, len: geneSeq.length },
+                        { label: t('home.transcript.regions.mrna', { len: mrna.length }), seq: mrna, len: mrna.length },
+                        { label: t('home.transcript.regions.cds', { len: cds.length }), seq: cds, len: cds.length },
                       ].filter(r => r.len > 0)
 
                       return (
@@ -586,14 +606,14 @@ export default function HomePage() {
                                   a.click()
                                   URL.revokeObjectURL(url)
                                 }}>
-                                  FASTA
+                                  {t('home.transcript.regions.downloadFasta')}
                                 </Button>
                               }
                               style={{ marginBottom: 4 }}
                             >
                               <pre
                                 style={{
-                                  fontFamily: '"Courier New", Courier, monospace',
+                                  fontFamily: "'Fira Code', 'Courier New', monospace",
                                   fontSize: 11,
                                   lineHeight: '16px',
                                   whiteSpace: 'pre-wrap',
@@ -601,7 +621,7 @@ export default function HomePage() {
                                   margin: 0,
                                   maxHeight: 150,
                                   overflow: 'auto',
-                                  background: '#fafafa',
+                                  background: '#f0f7f9',
                                   padding: 8,
                                   borderRadius: 4,
                                 }}
@@ -621,20 +641,20 @@ export default function HomePage() {
                     {jobLoading && <Spin />}
 
                     {jobDetail?.status === 'failed' && (
-                      <Alert title="Job Failed" description={jobDetail.error} type="error" showIcon />
+                      <Alert title={t('home.jobs.resultStatus.failed')} description={jobDetail.error} type="error" showIcon />
                     )}
 
                     {jobDetail?.status === 'cancelled' && (
-                      <Alert title="Job Cancelled" type="warning" showIcon />
+                      <Alert title={t('home.jobs.resultStatus.cancelled')} type="warning" showIcon />
                     )}
 
                     {jobDetail?.status === 'running' && (
-                      <Alert title={jobDetail.progress || 'Running...'} type="info" showIcon icon={<Spin />} />
+                      <Alert title={jobDetail.progress || t('home.jobs.resultStatus.running')} type="info" showIcon icon={<Spin />} />
                     )}
 
                     {jobDetail?.status === 'queued' && (
                       <Alert
-                        title={`Queued (position #${jobDetail.queue_pos})`}
+                        title={t('home.jobs.resultStatus.queued', { pos: jobDetail.queue_pos })}
                         type="info"
                         showIcon
                       />
@@ -644,7 +664,7 @@ export default function HomePage() {
                       <Alert
                         type="warning"
                         showIcon
-                        title={`${jobResult.errors.length} database(s) failed`}
+                        title={t('home.jobs.resultStatus.dbFailed', { count: jobResult.errors.length })}
                         description={
                           <Space orientation="vertical" size={2} style={{ width: '100%' }}>
                             {jobResult.errors.map((e) => (
@@ -669,7 +689,7 @@ export default function HomePage() {
                             <Divider />
                             {spatialLoading && (
                               <div style={{ textAlign: 'center', padding: 8 }}>
-                                <Spin /> <Text type="secondary">Looking up genomic features ...</Text>
+                                <Spin /> <Text type="secondary">{t('home.spatial.lookingUp')}</Text>
                                 <Divider />
                               </div>
                             )}
@@ -684,8 +704,8 @@ export default function HomePage() {
                                 <Divider />
                                 <Text strong>
                                   {spatialResult.features.length > 0
-                                    ? `${spatialResult.features.length} overlapping feature(s) at ${spatialResult.position}`
-                                    : `No overlap — flanking genes at position ${spatialResult.position}`}
+                                    ? t('home.spatial.overlappingAt', { count: spatialResult.features.length, pos: spatialResult.position })
+                                    : t('home.spatial.noOverlap', { pos: spatialResult.position })}
                                 </Text>
                                 {spatialResult.features.map((f) => (
                                   <Card key={f.id} size="small">
@@ -700,7 +720,7 @@ export default function HomePage() {
                                   </Card>
                                  ))}
                                  {spatialResult.features.length > 0 && (
-                                   <Text type="secondary" style={{ fontSize: 11 }}>Click an ID to look up transcript / CDS sequence</Text>
+                                   <Text type="secondary" style={{ fontSize: 11 }}>{t('home.transcript.regions.clickId')}</Text>
                                  )}
                                  {spatialResult.upstream && (
                                   <Card key={spatialResult.upstream.id} size="small">

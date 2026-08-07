@@ -1,5 +1,6 @@
 import { Card, Tag, Button, Typography, Space, Progress } from 'antd'
 import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, SyncOutlined, MinusCircleOutlined } from '@ant-design/icons'
+import { useTranslation } from 'react-i18next'
 import type { JobItem } from '../api/client'
 
 const { Text } = Typography
@@ -21,6 +22,7 @@ const statusMeta: Record<string, { color: string; icon: React.ReactNode }> = {
 }
 
 export default function JobCard({ job, onSelect, onCancel, selected }: Props) {
+  const { t } = useTranslation()
   const meta = statusMeta[job.status] || statusMeta.pending
   const isRunning = job.status === 'running'
 
@@ -30,7 +32,7 @@ export default function JobCard({ job, onSelect, onCancel, selected }: Props) {
       hoverable
       onClick={() => onSelect(job.job_id)}
       style={{
-        border: selected ? '2px solid #1677ff' : undefined,
+        border: selected ? '2px solid #0e7490' : undefined,
         opacity: job.status === 'cancelled' ? 0.6 : 1,
       }}
     >
@@ -41,7 +43,7 @@ export default function JobCard({ job, onSelect, onCancel, selected }: Props) {
         </Space>
 
         {job.status === 'queued' && job.queue_pos > 0 && (
-          <Text type="secondary">Queue position: #{job.queue_pos}</Text>
+          <Text type="secondary">{t('home.jobs.queuePos', { pos: job.queue_pos })}</Text>
         )}
 
         {isRunning && <Progress percent={99} status="active" showInfo={false} size="small" />}
@@ -64,7 +66,7 @@ export default function JobCard({ job, onSelect, onCancel, selected }: Props) {
               onCancel(job.job_id)
             }}
           >
-            Cancel
+            {t('home.jobs.cancel')}
           </Button>
         )}
       </Space>

@@ -1,0 +1,147 @@
+{
+  "common": {
+    "appName": "HelixBLAST",
+    "healthy": "正常",
+    "degraded": "降级",
+    "workers": "{{count}} 个工作线程",
+    "version": "v{{version}}"
+  },
+  "header": {
+    "statusLine": "v{{version}} | {{workers}} | {{storage}}"
+  },
+  "home": {
+    "validation": {
+      "empty": "请输入序列",
+      "noHeader": "输入必须以 FASTA 头（>）开头",
+      "tooShort": "FASTA 必须包含头行和至少一行序列"
+    },
+    "errors": {
+      "selectDatabase": "请至少选择一个数据库",
+      "jobSubmitted": "任务已提交（{{count}} 个数据库）",
+      "jobSubmittedPlural": "任务已提交（{{count}} 个数据库）",
+      "submitFailed": "任务提交失败",
+      "enterTranscriptId": "请输入转录本 ID",
+      "dbNotAvailable": "该命中结果没有可用数据库",
+      "noDbSelected": "未选择数据库",
+      "selectOneDb": "转录本查询仅支持单个数据库（当前选择了多个）",
+      "lookingUp": "正在查询 {{id}} ...",
+      "found": "已找到：{{loc}}（{{strand}}）",
+      "lookupFailed": "转录本查询失败",
+      "noDbSpatial": "没有可用于空间查询的数据库",
+      "spatialFailed": "空间查询失败",
+      "cancelRequested": "已请求取消任务",
+      "cancelFailed": "取消任务失败"
+    },
+    "degraded": {
+      "title": "系统处于低资源模式",
+      "description": "服务器 CPU/内存受限，任务吞吐量可能下降。"
+    },
+    "mode": {
+      "blast": "BLAST 搜索",
+      "transcript": "转录本查询"
+    },
+    "transcript": {
+      "notFound": "未配置数据库",
+      "label": "转录本 ID",
+      "placeholder": "例如：LOC112737024",
+      "lookup": "查询序列",
+      "selectDbFirst": "请先选择数据库",
+      "onlyOneDb": "转录本查询仅允许选择一个数据库",
+      "strand": {
+        "forward": "正向",
+        "reverse": "反向"
+      },
+      "regions": {
+        "up5": "上游 5 kb",
+        "up2": "上游 2 kb（近端）",
+        "geneBody": "基因体（{{len}} bp）",
+        "mrna": "mRNA（外显子拼接，{{len}} bp）",
+        "cds": "CDS（拼接，{{len}} bp）",
+        "transcripts": "转录本：",
+        "cdss": "CDS：",
+        "exons": "外显子：",
+        "gene": "基因：",
+        "downloadFasta": "FASTA",
+        "clickId": "点击 ID 查询转录本 / CDS 序列"
+      }
+    },
+    "jobs": {
+      "title": "任务",
+      "empty": "尚未提交任务",
+      "olderJobs": "更早的任务（{{count}}）",
+      "local": "本地",
+      "clear": "清空本地（{{count}}）",
+      "cacheCleared": "本地缓存已清空",
+      "cacheClearFailed": "清空缓存失败",
+      "queuePos": "队列位置：#{{pos}}",
+      "cancel": "取消",
+      "resultStatus": {
+        "success": "任务已完成",
+        "failed": "任务失败",
+        "cancelled": "任务已取消",
+        "running": "运行中...",
+        "queued": "排队中（位置 #{{pos}}）",
+        "dbFailed": "{{count}} 个数据库执行失败"
+      },
+      "selectHint": "从上方列表选择任务查看结果"
+    },
+    "results": {
+      "title": "结果",
+      "noSelection": "选择命中结果查看比对",
+      "noHits": "无结果可显示",
+      "query": "查询",
+      "subject": "目标",
+      "lookupTranscript": "转录本",
+      "lookupRegion": "区域",
+      "exportFasta": "导出 FASTA",
+      "reconnecting": "重连中...",
+      "connecting": "连接中...",
+      "close": "关闭"
+    },
+    "spatial": {
+      "title": "基因组上下文",
+      "lookingUp": "正在查询基因组特征 ...",
+      "noFeatures": "无重叠特征——显示侧翼基因",
+      "overlapping": "{{count}} 个重叠特征",
+      "overlappingAt": "位置 {{pos}} 有 {{count}} 个重叠特征",
+      "noOverlap": "无重叠——位置 {{pos}} 的侧翼基因",
+      "upstream": "上游",
+      "downstream": "下游",
+      "clear": "清除"
+    },
+    "sequenceInput": {
+      "fastaDetected": "已识别 FASTA 格式"
+    },
+    "paramPanel": {
+      "program": "程序",
+      "database": "数据库",
+      "dbPlaceholder": "选择一个或多个数据库...",
+      "noDb": "未配置数据库",
+      "taskPreset": "任务预设",
+      "taskPlaceholder": "选择任务预设...",
+      "advanced": "高级参数",
+      "submit": "提交 BLAST 任务"
+    }
+  },
+  "settings": {
+    "title": "设置",
+    "back": "返回首页",
+    "language": {
+      "title": "语言",
+      "desc": "选择界面语言，立即生效。"
+    },
+    "notifications": {
+      "title": "通知",
+      "lowResource": "显示低资源警告",
+      "lowResourceDesc": "当服务器资源受限时显示警告横幅。"
+    },
+    "cache": {
+      "title": "本地缓存",
+      "desc": "本地存储 {{count}} 个任务（24 小时有效）。",
+      "clear": "清除本地缓存",
+      "note": "仅清除任务，设置会保留。",
+      "cleared": "本地缓存已清除",
+      "clearFailed": "清除缓存失败"
+    }
+  }
+}

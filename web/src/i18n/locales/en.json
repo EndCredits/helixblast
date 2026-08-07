@@ -1,0 +1,147 @@
+{
+  "common": {
+    "appName": "HelixBLAST",
+    "healthy": "Healthy",
+    "degraded": "Degraded",
+    "workers": "{{count}} workers",
+    "version": "v{{version}}"
+  },
+  "header": {
+    "statusLine": "v{{version}} | {{workers}} | {{storage}}"
+  },
+  "home": {
+    "validation": {
+      "empty": "Sequence input is required",
+      "noHeader": "Input must start with a FASTA header (>)",
+      "tooShort": "FASTA must contain a header and at least one sequence line"
+    },
+    "errors": {
+      "selectDatabase": "Select at least one database",
+      "jobSubmitted": "Job submitted ({{count}} database)",
+      "jobSubmitted_plural": "Job submitted ({{count}} databases)",
+      "submitFailed": "Failed to submit job",
+      "enterTranscriptId": "Please enter a transcript ID",
+      "dbNotAvailable": "Database not available for this hit",
+      "noDbSelected": "No database selected",
+      "selectOneDb": "Select exactly one database for transcript lookup (multiple selected currently)",
+      "lookingUp": "Looking up {{id}} ...",
+      "found": "Found: {{loc}} ({{strand}})",
+      "lookupFailed": "Transcript lookup failed",
+      "noDbSpatial": "No database available for spatial lookup",
+      "spatialFailed": "Spatial lookup failed",
+      "cancelRequested": "Job cancellation requested",
+      "cancelFailed": "Failed to cancel job"
+    },
+    "degraded": {
+      "title": "System running in low-resource mode",
+      "description": "The server has limited CPU/memory. Job throughput may be reduced."
+    },
+    "mode": {
+      "blast": "BLAST Search",
+      "transcript": "Transcript Lookup"
+    },
+    "transcript": {
+      "notFound": "No databases configured",
+      "label": "Transcript ID",
+      "placeholder": "e.g. LOC112737024",
+      "lookup": "Lookup Sequence",
+      "selectDbFirst": "Select a database first",
+      "onlyOneDb": "Only one database allowed for transcript lookup",
+      "strand": {
+        "forward": "Forward",
+        "reverse": "Reverse"
+      },
+      "regions": {
+        "up5": "5 kb Upstream",
+        "up2": "2 kb Upstream (proximal)",
+        "geneBody": "Gene Body ({{len}} bp)",
+        "mrna": "mRNA (exons joined, {{len}} bp)",
+        "cds": "CDS (joined, {{len}} bp)",
+        "transcripts": "Transcripts:",
+        "cdss": "CDSs:",
+        "exons": "Exons:",
+        "gene": "Gene:",
+        "downloadFasta": "FASTA",
+        "clickId": "Click an ID to look up transcript / CDS sequence"
+      }
+    },
+    "jobs": {
+      "title": "Jobs",
+      "empty": "No jobs submitted yet",
+      "olderJobs": "Older jobs ({{count}})",
+      "local": "local",
+      "clear": "Clear local ({{count}})",
+      "cacheCleared": "Local cache cleared",
+      "cacheClearFailed": "Failed to clear cache",
+      "queuePos": "Queue position: #{{pos}}",
+      "cancel": "Cancel",
+      "resultStatus": {
+        "success": "Job completed successfully",
+        "failed": "Job Failed",
+        "cancelled": "Job Cancelled",
+        "running": "Running...",
+        "queued": "Queued (position #{{pos}})",
+        "dbFailed": "{{count}} database(s) failed"
+      },
+      "selectHint": "Select a job from the list above to view results"
+    },
+    "results": {
+      "title": "Results",
+      "noSelection": "Select a hit to view alignment",
+      "noHits": "No results to display",
+      "query": "Query",
+      "subject": "Subject",
+      "lookupTranscript": "Transcript",
+      "lookupRegion": "Region",
+      "exportFasta": "Export FASTA",
+      "reconnecting": "Reconnecting...",
+      "connecting": "Connecting...",
+      "close": "Close"
+    },
+    "spatial": {
+      "title": "Genomic Context",
+      "lookingUp": "Looking up genomic features ...",
+      "noFeatures": "No overlapping features — showing flanking genes",
+      "overlapping": "{{count}} overlapping feature(s)",
+      "overlappingAt": "{{count}} overlapping feature(s) at {{pos}}",
+      "noOverlap": "No overlap — flanking genes at position {{pos}}",
+      "upstream": "upstream",
+      "downstream": "downstream",
+      "clear": "Clear"
+    },
+    "sequenceInput": {
+      "fastaDetected": "FASTA format detected"
+    },
+    "paramPanel": {
+      "program": "Program",
+      "database": "Database",
+      "dbPlaceholder": "Select one or more databases...",
+      "noDb": "No databases configured",
+      "taskPreset": "Task Preset",
+      "taskPlaceholder": "Select a task preset...",
+      "advanced": "Advanced Parameters",
+      "submit": "Submit BLAST Job"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "back": "Back to Home",
+    "language": {
+      "title": "Language",
+      "desc": "Choose the interface language. Applied immediately."
+    },
+    "notifications": {
+      "title": "Notifications",
+      "lowResource": "Show low-resource warning",
+      "lowResourceDesc": "Display the warning banner when the server runs with limited resources."
+    },
+    "cache": {
+      "title": "Local Cache",
+      "desc": "{{count}} job(s) stored locally (24h TTL).",
+      "clear": "Clear local cache",
+      "note": "Clears jobs only. Settings are kept.",
+      "cleared": "Local cache cleared",
+      "clearFailed": "Failed to clear cache"
+    }
+  }
+}

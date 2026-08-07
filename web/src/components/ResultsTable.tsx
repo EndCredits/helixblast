@@ -1,5 +1,6 @@
 import { Table, Tag, Typography, Empty } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import { useTranslation } from 'react-i18next'
 import type { Hit } from '../api/client'
 
 const { Text } = Typography
@@ -10,8 +11,9 @@ interface Props {
 }
 
 export default function ResultsTable({ hits, onSelectHit }: Props) {
+  const { t } = useTranslation()
   if (!hits || hits.length === 0) {
-    return <Empty description="No results to display" />
+    return <Empty description={t('home.results.noHits')} />
   }
 
   const columns: ColumnsType<Hit> = [

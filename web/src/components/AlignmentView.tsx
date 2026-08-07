@@ -1,5 +1,6 @@
 import { useMemo, useCallback } from 'react'
 import { Typography, Space, Empty, Button, Divider } from 'antd'
+import { useTranslation } from 'react-i18next'
 import { DownloadOutlined, SearchOutlined, EnvironmentOutlined } from '@ant-design/icons'
 import type { Hit } from '../api/client'
 
@@ -108,6 +109,7 @@ function buildFASTA(hit: Hit): string {
 }
 
 export default function AlignmentView({ hit, onLookupTranscript, onLookupRegion }: Props) {
+  const { t } = useTranslation()
   const blocks = useMemo(() => {
     if (!hit) return []
     return buildWrappedAlignment(hit)
@@ -126,7 +128,7 @@ export default function AlignmentView({ hit, onLookupTranscript, onLookupRegion 
   }, [hit])
 
   if (!hit) {
-    return <Empty description="Select a hit to view alignment" />
+    return <Empty description={t('home.results.noSelection')} />
   }
 
   return (
@@ -138,7 +140,7 @@ export default function AlignmentView({ hit, onLookupTranscript, onLookupRegion 
         <Space>
           {onLookupTranscript && (
             <Button size="small" icon={<SearchOutlined />} onClick={() => onLookupTranscript(hit.subject_id)}>
-              Query Transcript
+              {t('home.results.lookupTranscript')}
             </Button>
           )}
           {onLookupRegion && hit.alignments.length > 0 && (
@@ -146,23 +148,23 @@ export default function AlignmentView({ hit, onLookupTranscript, onLookupRegion 
               const pos = Math.floor((hit.alignments[0].subject_start + hit.alignments[0].subject_end) / 2)
               onLookupRegion(hit.subject_id, pos)
             }}>
-              Lookup Region
+              {t('home.results.lookupRegion')}
             </Button>
           )}
           <Button size="small" icon={<DownloadOutlined />} onClick={handleExportFASTA}>
-            Export FASTA
+            {t('home.results.exportFasta')}
           </Button>
         </Space>
       </Space>
       <div
         style={{
-          background: '#fafafa',
+          background: '#f0f7f9',
           borderRadius: 6,
           padding: 12,
           overflowX: 'auto',
           maxHeight: 400,
           overflowY: 'auto',
-          fontFamily: '"Courier New", Courier, monospace',
+          fontFamily: "'Fira Code', 'Courier New', monospace",
           fontSize: 12,
           lineHeight: '16px',
         }}
@@ -194,7 +196,7 @@ export default function AlignmentView({ hit, onLookupTranscript, onLookupRegion 
                   const prefix = ' '.repeat(labelWidth)
                   return (
                     <>
-                      <span style={{ color: '#1677ff' }}>
+                      <span style={{ color: '#0e7490' }}>
                         {'Query '}{qPos.padStart(maxPosLen)}{' '}{qLine}
                       </span>
                       {'\n'}
