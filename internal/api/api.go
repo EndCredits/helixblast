@@ -9,6 +9,8 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"path"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
@@ -63,7 +65,7 @@ func NewServer(cfg *config.Config, pool *worker.Pool, dbMgr *config.DatabaseMana
 	if err != nil {
 		log.Printf("[helixblast] Failed to mount static frontend: %v", err)
 	} else {
-		s.router.Handle("/*", http.FileServer(http.FS(staticFS)))
+		s.router.Handle("/*", serveFrontend(staticFS))
 	}
 
 	return s
@@ -331,6 +333,40 @@ func jsonResponse(w http.ResponseWriter, code int, data any) {
 	if data != nil {
 		json.NewEncoder(w).Encode(data)
 	}
+}
+
+// serveFrontend serves the embedded single-page application.
+//
+// Routing contract (no hand-maintained exclusion list):
+//
+//   - API routes (/api/v1/*, /health) are registered before the catch-all
+//     and never reach this handler.
+//   - Requests whose path maps to a real embedded file are served verbatim.
+//   - Extensionless paths with no backing file are client-side routes:
+//     they fall back to index.html so hard refreshes and deep links work,
+//     and react-router takes over from there. Adding a client route
+//     therefore requires no server-side changes.
+//   - Paths that look like assets (carry a file extension) but have no
+//     backing file get a genuine 404 — broken references must fail loudly
+//     instead of silently receiving HTML. Corollary: client routes must
+//     never contain a file extension.
+func serveFrontend(frontend fs.FS) http.Handler {
+	fileServer := http.FileServer(http.FS(frontend))
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upath := strings.TrimPrefix(r.URL.Path, "/")
+		if upath != "" {
+			if _, err := frontend.Open(upath); err != nil && path.Ext(upath) == "" {
+				r2 := new(http.Request)
+				*r2 = *r
+				r2.URL = new(url.URL)
+				*r2.URL = *r.URL
+				r2.URL.Path = "/"
+				r = r2
+			}
+		}
+		fileServer.ServeHTTP(w, r)
+	})
 }
 
 func jsonError(w http.ResponseWriter, code int, msg string) {

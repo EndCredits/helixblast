@@ -224,6 +224,25 @@ Graceful shutdown on SIGINT/SIGTERM:
 
 ## Frontend
 
+### Serving & SPA fallback
+
+Client-side routes (react-router `BrowserRouter`): `/`, `/settings`, wildcard → home. Server side, API routes (`/api/v1/*`, `/health`) are registered **before** the static catch-all and never reach it.
+
+The catch-all (`serveFrontend` in `internal/api`) implements a self-maintaining fallback — deliberately **no hand-written exclusion list**:
+
+| Request | Behavior |
+|---|---|
+| Path maps to a real embedded file | Served verbatim (JS/CSS bundles, favicon) |
+| Extensionless path with no backing file | Rewritten to `/` → serves `index.html`; react-router takes over |
+| Path carries a file extension but has no backing file | Genuine `404` |
+
+Why this shape:
+
+- `/api/*` and `/health` are excluded by route precedence, not by a list — new API endpoints inherit this automatically.
+- Any extensionless URL falls back to the app shell, so adding a client route needs zero server changes.
+- Broken asset URLs intentionally return 404 instead of HTML: they fail loudly in devtools instead of silently parsing HTML as JavaScript.
+- **Corollary / the one rule to keep**: client-side routes must never contain a file extension.
+
 ### Tech stack
 
 | Component | Library | Why |
