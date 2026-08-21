@@ -192,10 +192,11 @@ func (s *Server) handleJobCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	snap := job.Snapshot()
 	jsonResponse(w, http.StatusCreated, map[string]any{
-		"job_id":    job.ID,
-		"status":    string(job.GetStatus()),
-		"queue_pos": job.QueuePos,
+		"job_id":    snap.ID,
+		"status":    string(snap.Status),
+		"queue_pos": snap.QueuePos,
 	})
 }
 

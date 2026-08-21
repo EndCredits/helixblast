@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"sync"
 	"testing"
 )
 
@@ -80,5 +81,32 @@ func TestJobIDUnique(t *testing.T) {
 			t.Errorf("duplicate job ID: %s", id)
 		}
 		ids[id] = true
+	}
+}
+
+func TestJobConcurrentAccess(t *testing.T) {
+	job := NewJob("blastn", []string{"nt"}, ">seq1\nATGC", nil)
+
+	var wg sync.WaitGroup
+	for g := 0; g < 8; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for k := 0; k < 200; k++ {
+				job.SetQueuePos(k)
+				job.SetProgress("working")
+				job.SetStatus(StatusRunning)
+				_ = job.GetStatus()
+				snap := job.Snapshot()
+				if snap.QueuePos < 0 {
+					t.Error("queue_pos must never be negative")
+				}
+			}
+		}()
+	}
+	wg.Wait()
+
+	if job.IsCancelling() {
+		t.Error("job must not be cancelling")
 	}
 }

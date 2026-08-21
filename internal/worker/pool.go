@@ -52,7 +52,7 @@ func (p *Pool) Submit(job *Job) error {
 	select {
 	case p.jobCh <- job:
 		job.SetStatus(StatusQueued)
-		job.QueuePos = len(p.jobCh)
+		job.SetQueuePos(len(p.jobCh))
 		p.jobs[job.ID] = job
 		p.mu.Unlock()
 		return nil
@@ -72,11 +72,11 @@ func (p *Pool) Get(id string) (*Job, error) {
 	return job, nil
 }
 
-func (p *Pool) List() []Job {
+func (p *Pool) List() []JobSnapshot {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	result := make([]Job, 0, len(p.jobs))
+	result := make([]JobSnapshot, 0, len(p.jobs))
 	for _, j := range p.jobs {
 		snap := j.Snapshot()
 		snap.QueuePos = p.queuePosUnsafe(j)
@@ -164,7 +164,7 @@ func (p *Pool) updateQueuePositions() {
 	}
 
 	for i, j := range queued {
-		j.QueuePos = i + 1
+		j.SetQueuePos(i + 1)
 	}
 }
 
@@ -190,7 +190,7 @@ func (p *Pool) worker(id int) {
 		}
 
 		job.SetStatus(StatusRunning)
-		job.QueuePos = 0
+		job.SetQueuePos(0)
 		p.updateQueuePositions()
 
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)

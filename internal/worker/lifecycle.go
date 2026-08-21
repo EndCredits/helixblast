@@ -22,6 +22,22 @@ const (
 	StatusCancelled Status = "cancelled"
 )
 
+// JobSnapshot is a plain-data projection of Job taken under the job's read
+// lock. It carries no synchronization primitives so it can be copied,
+// appended, and marshaled freely.
+type JobSnapshot struct {
+	ID        string          `json:"job_id"`
+	Status    Status          `json:"status"`
+	QueuePos  int             `json:"queue_pos"`
+	Program   string          `json:"program"`
+	Database  string          `json:"database"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
+	Result    json.RawMessage `json:"result,omitempty"`
+	Error     string          `json:"error,omitempty"`
+	Progress  string          `json:"progress,omitempty"`
+}
+
 type Job struct {
 	ID             string            `json:"job_id"`
 	Status         Status            `json:"status"`
@@ -157,10 +173,16 @@ func (j *Job) IsCancelling() bool {
 	return j.cancelling.Load()
 }
 
-func (j *Job) Snapshot() Job {
+func (j *Job) SetQueuePos(pos int) {
+	j.mu.Lock()
+	j.QueuePos = pos
+	j.mu.Unlock()
+}
+
+func (j *Job) Snapshot() JobSnapshot {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
-	return Job{
+	return JobSnapshot{
 		ID:        j.ID,
 		Status:    j.Status,
 		QueuePos:  j.QueuePos,
