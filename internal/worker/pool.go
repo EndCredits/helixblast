@@ -16,30 +16,37 @@ import (
 type ExecFunc func(ctx context.Context, job *Job, dbName string) ([]blast.Hit, error)
 
 type Pool struct {
-	mu      sync.RWMutex
-	jobs    map[string]*Job
-	jobCh   chan *Job
-	maxJobs int
-	execFn  ExecFunc
-	wg      sync.WaitGroup
-	stopCh  chan struct{}
-	doneCh  chan struct{}
+	mu        sync.RWMutex
+	jobs      map[string]*Job
+	jobCh     chan *Job
+	maxJobs   int
+	execFn    ExecFunc
+	resultTTL time.Duration
+	wg        sync.WaitGroup
+	stopCh    chan struct{}
+	doneCh    chan struct{}
 }
 
-func NewPool(maxConcurrent int, maxQueue int, execFn ExecFunc) *Pool {
+const pruneInterval = 10 * time.Minute
+
+func NewPool(maxConcurrent int, maxQueue int, execFn ExecFunc, resultTTL time.Duration) *Pool {
 	p := &Pool{
-		jobs:    make(map[string]*Job),
-		jobCh:   make(chan *Job, maxQueue),
-		maxJobs: maxConcurrent,
-		execFn:  execFn,
-		stopCh:  make(chan struct{}),
-		doneCh:  make(chan struct{}),
+		jobs:      make(map[string]*Job),
+		jobCh:     make(chan *Job, maxQueue),
+		maxJobs:   maxConcurrent,
+		execFn:    execFn,
+		resultTTL: resultTTL,
+		stopCh:    make(chan struct{}),
+		doneCh:    make(chan struct{}),
 	}
 
 	for i := 0; i < maxConcurrent; i++ {
 		p.wg.Add(1)
 		go p.worker(i)
 	}
+
+	p.wg.Add(1)
+	go p.pruneLoop()
 
 	return p
 }
@@ -136,6 +143,46 @@ func (p *Pool) Stop() {
 	}
 
 	close(p.doneCh)
+}
+
+func (p *Pool) pruneLoop() {
+	defer p.wg.Done()
+
+	ticker := time.NewTicker(pruneInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-p.stopCh:
+			return
+		case <-ticker.C:
+			if removed := p.pruneExpired(time.Now()); removed > 0 {
+				log.Printf("[helixblast] Pruned %d expired job(s) from registry", removed)
+			}
+		}
+	}
+}
+
+// pruneExpired removes terminal-state jobs whose last update is older than
+// resultTTL. It bounds the in-memory registry so completed jobs do not
+// accumulate forever; the cadence matches the storage janitor.
+func (p *Pool) pruneExpired(now time.Time) int {
+	cutoff := now.Add(-p.resultTTL)
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	removed := 0
+	for id, j := range p.jobs {
+		switch j.GetStatus() {
+		case StatusSuccess, StatusFailed, StatusCancelled:
+			if j.GetUpdatedAt().Before(cutoff) {
+				delete(p.jobs, id)
+				removed++
+			}
+		}
+	}
+	return removed
 }
 
 func (p *Pool) queuePosUnsafe(job *Job) int {

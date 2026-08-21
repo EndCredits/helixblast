@@ -128,8 +128,10 @@ func main() {
 		})
 	}
 
-	pool := worker.NewPool(resources.ActualConcurrent, cfg.Blast.MaxJobs, execFn)
-	logger.Printf("Worker pool: %d concurrent workers, %d max queue", resources.ActualConcurrent, cfg.Blast.MaxJobs)
+	resultTTL := time.Duration(cfg.Storage.ResultTTLHours) * time.Hour
+	pool := worker.NewPool(resources.ActualConcurrent, cfg.Blast.MaxJobs, execFn, resultTTL)
+	logger.Printf("Worker pool: %d concurrent workers, %d max queue, registry TTL %dh",
+		resources.ActualConcurrent, cfg.Blast.MaxJobs, cfg.Storage.ResultTTLHours)
 
 	jan := janitor.New(store, cfg.Storage.ResultTTLHours)
 	jan.Start()

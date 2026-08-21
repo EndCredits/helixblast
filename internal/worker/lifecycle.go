@@ -124,6 +124,12 @@ func (j *Job) GetStatus() Status {
 	return j.Status
 }
 
+func (j *Job) GetUpdatedAt() time.Time {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.UpdatedAt
+}
+
 func (j *Job) SetProgress(msg string) {
 	j.mu.Lock()
 	j.Progress = msg

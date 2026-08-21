@@ -3,6 +3,7 @@ package worker
 import (
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestNewJob(t *testing.T) {
@@ -108,5 +109,53 @@ func TestJobConcurrentAccess(t *testing.T) {
 
 	if job.IsCancelling() {
 		t.Error("job must not be cancelling")
+	}
+}
+
+func TestPruneExpired(t *testing.T) {
+	now := time.Now()
+	p := &Pool{
+		jobs:      make(map[string]*Job),
+		resultTTL: time.Hour,
+	}
+
+	add := func(status Status, updatedAt time.Time) *Job {
+		j := NewJob("blastn", []string{"nt"}, ">seq1\nATGC", nil)
+		j.Status = status
+		j.UpdatedAt = updatedAt
+		p.jobs[j.ID] = j
+		return j
+	}
+
+	oldSuccess := add(StatusSuccess, now.Add(-2*time.Hour))
+	oldFailed := add(StatusFailed, now.Add(-3*time.Hour))
+	freshSuccess := add(StatusSuccess, now.Add(-time.Minute))
+	agedRunning := add(StatusRunning, now.Add(-2*time.Hour))
+
+	removed := p.pruneExpired(now)
+
+	if removed != 2 {
+		t.Errorf("pruneExpired() removed %d jobs, want 2", removed)
+	}
+	if len(p.jobs) != 2 {
+		t.Errorf("registry size = %d, want 2", len(p.jobs))
+	}
+
+	contains := func(target *Job) bool {
+		for _, j := range p.jobs {
+			if j == target {
+				return true
+			}
+		}
+		return false
+	}
+	if contains(oldSuccess) || contains(oldFailed) {
+		t.Error("aged terminal jobs must be pruned")
+	}
+	if !contains(freshSuccess) {
+		t.Error("fresh terminal job must be kept")
+	}
+	if !contains(agedRunning) {
+		t.Error("running job must never be pruned regardless of age")
 	}
 }
