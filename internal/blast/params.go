@@ -11,13 +11,25 @@ type ParamWhitelist struct {
 	params map[string]bool
 }
 
+// reservedParams are injected by the server itself in ExecConfig.BuildCommand.
+// BLAST+ applies last-wins semantics for duplicated flags, so an advanced param
+// of the same name appended later would silently override server-controlled
+// behavior (query file, target database, output format, thread budget, output
+// capture). They are excluded from the whitelist.
+var reservedParams = map[string]bool{
+	"query":       true,
+	"db":          true,
+	"outfmt":      true,
+	"num_threads": true,
+	"out":         true,
+}
+
 func BuildWhitelist(blastPath string) (*ParamWhitelist, error) {
 	whitelist := &ParamWhitelist{
 		params: make(map[string]bool),
 	}
 
 	programs := []string{"blastn", "blastp", "blastx", "tblastn", "tblastx"}
-	composite := make(map[string]bool)
 
 	for _, prog := range programs {
 		exe := prog
@@ -29,32 +41,14 @@ func BuildWhitelist(blastPath string) (*ParamWhitelist, error) {
 			continue
 		}
 		for _, p := range progParams {
-			composite[p] = true
+			if !reservedParams[p] {
+				whitelist.params[p] = true
+			}
 		}
 	}
 
-	if len(composite) == 0 {
+	if len(whitelist.params) == 0 {
 		return nil, fmt.Errorf("failed to parse any BLAST+ help output; check BLAST_PATH")
-	}
-
-	allowed := []string{
-		"evalue", "word_size", "gapopen", "gapextend",
-		"reward", "penalty", "max_target_seqs",
-		"perc_identity", "qcov_hsp_perc",
-		"num_threads", "strand", "task",
-		"dust", "soft_masking", "lcase_masking",
-		"max_hsps", "xdrop_ungap",
-		"xdrop_gap", "xdrop_gap_final",
-	}
-
-	for _, a := range allowed {
-		if composite[a] {
-			whitelist.params[a] = true
-		}
-	}
-
-	for p := range composite {
-		whitelist.params[p] = true
 	}
 
 	return whitelist, nil
