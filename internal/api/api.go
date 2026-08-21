@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -218,6 +219,10 @@ func (s *Server) handleJobGet(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleJobCancel(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "jobID")
 	if err := s.pool.Cancel(jobID); err != nil {
+		if errors.Is(err, worker.ErrJobNotFound) {
+			jsonError(w, http.StatusNotFound, err.Error())
+			return
+		}
 		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}

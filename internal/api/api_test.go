@@ -6,8 +6,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/EndCredits/helixblast/internal/blast"
+	"github.com/EndCredits/helixblast/internal/worker"
 )
 
 func TestHandleJobCreateRejectsUnknownParam(t *testing.T) {
@@ -77,5 +79,26 @@ func TestHandleJobCreateAllowsWhitelistedParams(t *testing.T) {
 
 	if strings.Contains(w.Body.String(), "invalid blast parameter") {
 		t.Fatalf("whitelisted params were rejected: %s", w.Body.String())
+	}
+}
+
+func TestHandleJobCancelUnknownIDReturns404(t *testing.T) {
+	pool := worker.NewPool(1, 1, nil, time.Hour)
+	defer pool.Stop()
+	s := &Server{pool: pool}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/jobs/hxb-00000000", nil)
+	w := httptest.NewRecorder()
+	s.handleJobCancel(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for unknown job id, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !strings.Contains(resp["error"], "job not found") {
+		t.Fatalf("unexpected error message: %q", resp["error"])
 	}
 }

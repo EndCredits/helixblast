@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"sort"
@@ -12,6 +13,10 @@ import (
 
 	"github.com/EndCredits/helixblast/internal/blast"
 )
+
+// ErrJobNotFound reports that no job with the given ID exists in the
+// registry — never submitted, or pruned after resultTTL.
+var ErrJobNotFound = errors.New("job not found")
 
 type ExecFunc func(ctx context.Context, job *Job, dbName string) ([]blast.Hit, error)
 
@@ -74,7 +79,7 @@ func (p *Pool) Get(id string) (*Job, error) {
 	defer p.mu.RUnlock()
 	job, ok := p.jobs[id]
 	if !ok {
-		return nil, fmt.Errorf("job not found: %s", id)
+		return nil, fmt.Errorf("%w: %s", ErrJobNotFound, id)
 	}
 	return job, nil
 }
@@ -97,7 +102,7 @@ func (p *Pool) Cancel(id string) error {
 	job, ok := p.jobs[id]
 	p.mu.RUnlock()
 	if !ok {
-		return fmt.Errorf("job not found: %s", id)
+		return fmt.Errorf("%w: %s", ErrJobNotFound, id)
 	}
 
 	status := job.GetStatus()
