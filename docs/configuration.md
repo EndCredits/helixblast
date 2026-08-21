@@ -26,7 +26,7 @@ storage:
 |-------|---------|-----|
 | `type` | `local` | Local disk for single-server deployments. `s3` for S3-compatible storage (Cloudflare R2, MinIO, AWS S3) |
 | `data_dir` | `./data` | Where job results are stored on disk. Ignored when `type=s3` |
-| `result_ttl_hours` | `24` | Job results are ephemeral — auto-deleted after this period. No long-term archive |
+| `result_ttl_hours` | `24` | Job results are ephemeral — auto-deleted after this period. Governs all three expiry surfaces at once: stored files / S3 objects (janitor), and the in-memory job registry (terminal-state jobs pruned, IDs then resolve to 404). No long-term archive |
 
 ### s3
 

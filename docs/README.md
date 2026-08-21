@@ -63,4 +63,7 @@ All code in this project is licensed under the MIT License, and the documentatio
 | Docker: Debian runtime | Switched to `debian:bookworm-slim` + NCBI BLAST+ tarball. Builder: `golang:1.26.3-trixie`. |
 | `split_fasta_v2.sh` | Streams FASTA into `gzip` + `gzip -t` verification. |
 | `GET /api/v1/jobs` removed | Endpoint exposed all running jobs to anyone. Frontend no longer uses it. `GET /jobs/{id}` still works (requires knowing the ID). |
+| Param whitelist semantics | Whitelist = every parameter scraped from BLAST+ `-help` output, minus server-reserved flags (`query`, `db`, `outfmt`, `num_threads`, `out`) which could otherwise override server-injected args via BLAST+ last-wins semantics. Unknown params still rejected with 400 at submission. |
+| Registry TTL | Terminal-state jobs are pruned from the in-memory registry after `result_ttl_hours` (same cadence as storage janitor). Expired job IDs return 404. Bounds memory growth and keeps queue-position rescans proportional to recent jobs. Documented under API → Lifecycle and retention. |
+| Data-race fixes | New plain-data `JobSnapshot` type replaces lock-embedding `Job` value copies in JSON responses; `QueuePos` writes now go through locked `SetQueuePos`; concurrent-access regression tests added (`go test -race` clean). |
 

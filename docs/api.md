@@ -35,6 +35,16 @@ Returns all entries from `databases.yaml`. Paths and credentials are never expos
 
 ## Jobs
 
+### Lifecycle and retention
+
+Job records live in server memory only — there is no database. The retention contract:
+
+- A finished job (`success`, `failed`, `cancelled`) stays queryable for `result_ttl_hours` (default 24) after its last state change.
+- After the retention window, the job is pruned from the registry on the janitor cadence (every 10 minutes). **All lookups of a pruned ID return `404 Not Found`** — the ID effectively never existed. This mirrors storage expiry: files and S3 objects are deleted on the same schedule.
+- A server restart clears the entire registry immediately.
+
+Result delivery is **fetch-once**: the SSE stream carries the full result on the terminal event, and the first `GET /api/v1/jobs/{id}` after completion returns it once — the server drops its copy immediately after either delivery path. Later reads within the retention window still return status and metadata but `"result"` is absent. Clients are expected to persist results on arrival; the bundled frontend stores them in browser IndexedDB under the same TTL.
+
 ### Submit
 
 ```
@@ -124,7 +134,7 @@ DELETE /api/v1/jobs/{id}
 → 202 { "status": "cancelling" }
 ```
 
-Soft cancel: sets a cancellation flag. BLAST runs to completion but the result is discarded. Already-terminal jobs return `400`.
+Soft cancel: sets a cancellation flag. BLAST runs to completion but the result is discarded. Already-terminal jobs return `400`. Unknown or expired (pruned) job IDs return `404`.
 
 ### Events (SSE)
 
