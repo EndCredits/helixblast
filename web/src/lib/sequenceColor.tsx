@@ -13,10 +13,11 @@ function colorForChar(ch: string): string | null {
 }
 
 export function isNucleotideSequence(seq: string): boolean {
+  const content = seq.replace(/\s/g, '')
   return (
-    seq.length > 0 &&
-    seq.length <= MAX_COLORED_LENGTH &&
-    NUCLEOTIDE_ALPHABET.test(seq)
+    content.length > 0 &&
+    content.length <= MAX_COLORED_LENGTH &&
+    NUCLEOTIDE_ALPHABET.test(content)
   )
 }
 
