@@ -4,7 +4,7 @@ Light, modern BLAST web service — single binary, zero external dependencies.
 
 - **BLAST Search**: Web UI for NCBI BLAST+, with job queue, SSE streaming, alignment viewer
 - **Multi-Database BLAST**: Search against multiple databases in one submission. Worker runs each DB sequentially, merges and sorts results, tags every hit with its source database. Partial errors per database are collected and displayed.
-- **Transcript Lookup**: GFF3-based gene/transcript/CDS coordinate resolution and sequence extraction, backed by local FASTA or Cloudflare Worker + R2. Standalone transcript lookup disabled in the UI when multiple databases are selected (the `/api/v1/transcripts` endpoint always requires a single `db`).
+- **Transcript Lookup**: GFF3-based gene/transcript/CDS coordinate resolution and sequence extraction, backed by local FASTA or Cloudflare Worker + R2. Lives on its own `/transcript` page with a single-database selector (the `/api/v1/transcripts` endpoint always requires a single `db`).
 - **Spatial Search**: Chromosome interval lookup. Click a BLAST hit to see overlapping genes and flanking features.
 - **Binary Index (mmap)**: GFF3 annotation stored as a memory‑mapped binary with xxh3 hash tables. Zero‑decode startup — RSS starts near zero, grows only as query‑touched pages are paged in. Auto‑detected alongside JSON, no config change required.
 - **Offline cache**: BLAST results persist in browser IndexedDB (24h TTL). The job list and all results live exclusively in IndexedDB — the server holds no results after SSE delivery. Each browser is an isolated workspace (no cross-device job sharing).

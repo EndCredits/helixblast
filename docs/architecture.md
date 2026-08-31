@@ -7,7 +7,7 @@ HelixBLAST compiles to a **single static binary** (~13MB). The React frontend is
 ## Why Go
 
 - **os/exec**: Native process management for BLAST+ — process isolation, signal handling, stdout/stderr capture
-- **bufio**: Streaming BLAST output parsing without loading results into memory
+- **bufio**: Tabular BLAST output parsed line-by-line with `bufio.Scanner` (stdout is fully buffered in memory; size is bounded by the 20-hits-per-database parser cap)
 - **chi/v5**: Zero-allocation radix tree router, <2MB memory footprint
 - **Goroutines**: Lightweight concurrency for worker pool — fixed-size goroutine pool with channel-based job queue
 - **Single binary**: Cross-compilation to any target (linux/amd64, darwin/arm64, etc.)
@@ -80,7 +80,7 @@ Builds a temporary `.bin` from JSON, then compares every entry, family, coord, a
 
 | Offset | Content | Size |
 |--------|---------|------|
-| 0 | `Header` — magic `HXBI`, version=1, entry/family/coord/spatial counts, section offets, string pool off/size | 88 B |
+| 0 | `Header` — magic `HXBI`, version=2, entry/family/coord/spatial counts, section offsets, string pool off/size | 88 B |
 | `hdr.EntriesOffset` | Entry hash table: `{hash uint64, val uint64}` × `nextPow2(entryCount×2)` | slotCount×16 B |
 | … after hash | Entry records: `{chr_off, start, end, strand_off, type_off, gene_off}` × entryCount | entryCount×24 B |
 | `hdr.FamiliesOffset` | Family hash table | slotCount×16 B |
@@ -205,7 +205,9 @@ Each SSE connection creates a subscriber channel on the Job. Status changes push
 
 ## BLAST parameter whitelist
 
-At startup, HelixBLAST runs `blastn -help`, `blastp -help`, `blastx -help`, `tblastn -help`, `tblastx -help` and parses the output to build a whitelist of valid parameters. User-supplied `advanced_params` are validated against this list at **job submission time** — unknown parameters are rejected with `400 Bad Request` and the job never enters the queue. This prevents arbitrary flag injection.
+At startup, HelixBLAST runs `blastn -help`, `blastp -help`, `blastx -help`, `tblastn -help`, `tblastx -help` and parses the output to build a whitelist of valid parameters. User-supplied `advanced_params` are validated against this list at **job submission time** — unknown parameters are rejected with `400 Bad Request` and the job never enters the queue (the worker re-checks before execution).
+
+The whitelist deliberately contains **every parameter the installed BLAST+ actually supports** — tuning is a user right, not a privileged operation. The single exception is a small server-reserved set (`query`, `db`, `outfmt`, `num_threads`, `out`) that `BuildCommand` injects itself: BLAST+ applies last-wins for duplicated flags, so a user passing one of those names would silently override server-controlled behavior. Command-line injection is prevented independently of the whitelist: keys and values are sanitized against shell metacharacters, and `exec.Command` never goes through a shell.
 
 Default BLAST parameters when not overridden: `-max_target_seqs 5000`, `-evalue 10`. The parser further limits results to 20 hits per database (merged to top 200 across databases).
 
@@ -215,12 +217,11 @@ Token bucket algorithm: 100 requests/second per IP, burst capacity 120. Returns 
 
 ## Shutdown
 
-Graceful shutdown on SIGINT/SIGTERM:
+Graceful shutdown on SIGINT/SIGTERM (order as implemented in `cmd/server/main.go`):
 
-1. Cancel all running/queued jobs
-2. Wait for workers to finish current work (30s timeout)
-3. HTTP server graceful shutdown (5s timeout)
-4. Exit
+1. HTTP server graceful shutdown (5s timeout) — stop accepting, drain in-flight requests
+2. `pool.Stop()`: cancel all running/queued jobs, close the queue, wait for workers to finish (30s timeout, then force)
+3. Exit via `os.Exit(0)` — this skips the deferred janitor/fsnotify stops; harmless at process end, but worth cleaning up if shutdown ever needs to flush state
 
 ## Frontend
 
