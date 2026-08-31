@@ -20,9 +20,9 @@ User enters ID in HelixBLAST UI
         ▼
 GET /api/v1/transcripts?db=X&transcript=Y
         │
-        ├─ Loads index via LoadIndexAuto (databases.yaml transcript.index_path)
-        │     .bin exists? → mmap (zero-decode)
-        │     else         → json.Decode
+         ├─ Loads index via LoadIndexAuto (databases.yaml transcript.index_path)
+         │     .bin exists? → mmap (zero-decode, per request)
+         │     else         → json.Decode (cached by path, mtime/size invalidation)
         │
         ├─ Resolves ID → coordinates (chr, start, end, strand)
         │
@@ -146,7 +146,7 @@ User enters transcript ID in HelixBLAST UI
         │
         ▼
 HelixBLAST Server
-├─ Load index (local, ~8MB .json.gz) → resolve ID to coordinates
+├─ Load index (local .bin, or cached JSON decode) → resolve ID to coordinates
 ├─ transcript.fasta_dir configured?
 │     └─ Yes → extract local (O(1) = f.Seek(fasta_index[chr]))
 ├─ No, but config.yaml has worker_url?
@@ -163,7 +163,11 @@ HelixBLAST Server
 
 ### Why the index stays local
 
-The full genome index can contain 200K+ entries. Decompressing and JSON-parsing it in a Worker would exceed the 10ms CPU time limit (free plan). The HelixBLAST server has no such constraint — `json.NewDecoder(gzipReader).Decode()` takes <100ms for a 40MB JSON. Worker only handles the I/O-bound sequence extraction from R2.
+The full genome index can contain 200K+ entries. Decompressing and JSON-parsing it in a Worker would exceed the 10ms CPU time limit (free plan). The HelixBLAST server has no such constraint — a full decode is O(index size) (calibration: ~580 ms and ~4× the resident heap in allocation churn for a 200K-entry index), which is why the server caches the decoded reader per path: the first request pays, later requests hit at ~5 µs regardless of index size. Worker only handles the I/O-bound sequence extraction from R2.
+
+### Known limitation: spatial lookups materialize whole chromosomes
+
+`IndexReader.Spatial(chr)` copies the entire per-chromosome feature array on every call — cost is O(features on that chromosome), measured at ~80 ns and ~90 B per feature (binary reader) / ~25 ns and ~80 B per feature (cached JSON reader) — even though a point query only needs a narrow window. The fix is a windowed/binary-search lookup on the sorted array (mmap pages in the binary case). Tracked as the next optimization after caching; benchmark fixtures: `internal/transcript/bench_test.go` (`BenchmarkSpatialV2Resident`).
 
 ### Deploying the Worker
 
@@ -189,7 +193,7 @@ wrangler deploy
 # In config.yaml:
 #   database.worker_url: https://helixblast-gene.<subdomain>.workers.dev
 # In databases.yaml:
-#   transcript.index_path: /data/gff3/db-name.index.json.gz
+#   transcript.index_path: /data/gff3/db-name.index.bin
 ```
 
 ### Worker fetch characteristics

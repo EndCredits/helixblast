@@ -5,7 +5,7 @@ databases:
   #   description: "NCBI Nucleotide (2026-05)"
   #   last_updated: "2026-05-10"
     # transcript:
-    #   index_path: "/path/to/gff3-index.json.gz"
+    #   index_path: "/path/to/gff3-index.bin"   # build directly: helixblast-index --gff3 … --fasta … --out …
     #   fasta_dir: "/path/to/genome/fasta/"
     #   fasta_file: "/path/to/genome/genome.fa"
     #   source: "shared-genome-name"   # Worker: use this as the db param instead of name

@@ -6,19 +6,20 @@ Light, modern BLAST web service — single binary, zero external dependencies.
 - **Multi-Database BLAST**: Search against multiple databases in one submission. Worker runs each DB sequentially, merges and sorts results, tags every hit with its source database. Partial errors per database are collected and displayed.
 - **Transcript Lookup**: GFF3-based gene/transcript/CDS coordinate resolution and sequence extraction, backed by local FASTA or Cloudflare Worker + R2. Lives on its own `/transcript` page with a single-database selector (the `/api/v1/transcripts` endpoint always requires a single `db`).
 - **Spatial Search**: Chromosome interval lookup. Click a BLAST hit to see overlapping genes and flanking features.
-- **Binary Index (mmap)**: GFF3 annotation stored as a memory‑mapped binary with xxh3 hash tables. Zero‑decode startup — RSS starts near zero, grows only as query‑touched pages are paged in. Auto‑detected alongside JSON, no config change required.
+- **Binary Index (mmap)**: GFF3 annotation stored as a memory‑mapped binary with xxh3 hash tables — the **recommended runtime format**, built directly from GFF3 + FASTA with `helixblast-index`. Zero‑decode startup — RSS starts near zero, grows only as query‑touched pages are paged in. JSON indexes remain supported (decoded once, cached by path) for debugging and legacy pipelines; a `.bin` is auto‑detected alongside any configured JSON path.
 - **Offline cache**: BLAST results persist in browser IndexedDB (24h TTL). The job list and all results live exclusively in IndexedDB — the server holds no results after SSE delivery. Each browser is an isolated workspace (no cross-device job sharing).
 
 ## Quickstart
 
 ```bash
-# Build server + prepare tool
+# Build server + index tools
 make build
 
-# Convert JSON GFF3 index to mmap binary (optional — server auto-detects)
-./helixblast-prepare --json refseq.index.json.gz --out refseq.index.bin
+# Build the runtime index directly from GFF3 + FASTA (recommended)
+./helixblast-index --gff3 annotations.gff3 --fasta genome.fa --out refseq.index.bin
+# (legacy: ./helixblast-prepare --json refseq.index.json.gz --out refseq.index.bin)
 
-# Run server
+# Run server — point databases.yaml transcript.index_path at the .bin
 ./helixblast --config config.yaml
 ```
 
@@ -27,8 +28,8 @@ make build
 | Binary | Source | Purpose |
 |--------|--------|---------|
 | `helixblast` | `cmd/server` | Full BLAST web server (REST + SSE + embedded frontend) |
-| `helixblast-index` | `cmd/indexer` | GFF3 + genome FASTA → binary index (replaces Node.js `prepare.js`) |
-| `helixblast-prepare` | `cmd/prepare` | Standalone index builder: JSON → binary, ~3 MB, no BLAST deps |
+| `helixblast-index` | `cmd/indexer` | GFF3 + genome FASTA → **binary index directly** (recommended; `--json` optionally keeps a debug intermediate; replaces Node.js `prepare.js`) |
+| `helixblast-prepare` | `cmd/prepare` | Legacy/convenience converter: existing JSON → binary, ~3 MB, no BLAST deps |
 | `verify` | `cmd/verify` | Builds temp binary from JSON and compares all entries/families/coords/fasta-index for equivalence |
 
 ## Documentation
@@ -71,4 +72,5 @@ All code in this project is licensed under the MIT License, and the documentatio
 | Spatial search placement (fixup) | Spatial search reverted to its original role: an auxiliary view of BLAST results. It auto-appears below the alignment when a hit's database has `is_chromosome_db: true` (HSP midpoint → overlapping features + flanking genes), and is gated off for non-chromosome databases. Removed from `/transcript`; the redundant "lookup region" button on the alignment was dropped; feature IDs link into `/transcript?db=&id=`. |
 | UI redesign (Bio Minimal) | Ant Design v6 token-driven theme in `web/src/theme.ts`: single teal brand seed, slate neutrals, flat-first surfaces (no heavy shadows), 8/12px radius. IGV-style ACGT coloring for alignments and region FASTA via `SequenceText` (nucleotide-only, run-merged, length-capped). Emoji replaced by an inline SVG helix mark (header + favicon). Design rationale documented in architecture → Design system. |
 | Dark mode | `system \| light \| dark` preference (default system) via `ThemeModeProvider`, persisted in `localStorage`, resolved before paint by an inline `index.html` script (no FOUC) with live `prefers-color-scheme` tracking. Neutrals flip through `theme.useToken()`; brand + IGV nucleotide palettes have dedicated dark variants. Toggle in the header (sun/moon) and Settings → Appearance. |
+| JSON index caching | Decoded JSON readers cached by path (`mtime`+`size` invalidation, per-path load mutex). Measured on a 200K-entry index: per-request JSON load 579 ms / 302 MB churn → cache hit 4.5 µs; end-to-end spatial request 554 ms → 0.5 ms. Binary readers deliberately uncached (open ≈ 25–50 µs, mmap lifecycle per request). Baseline benchmarks: `internal/transcript/bench_test.go`. |
 

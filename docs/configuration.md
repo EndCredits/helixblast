@@ -89,7 +89,7 @@ databases:
     description: "Peanut YZ9102 genome annotation"
     last_updated: "2026-05-16"
     transcript:
-      index_path: "/data/gff3/arachis-9102.index.json"
+      index_path: "/data/gff3/arachis-9102.index.bin"
       fasta_dir: "/data/genome/arachis-9102/"
       # fasta_file: "/data/genome/arachis-9102.fa"  # alternative: single multi-FASTA
 ```
@@ -109,7 +109,7 @@ databases:
 
 | Field | Why |
 |-------|-----|
-| `index_path` | Path to the GFF3 preprocessed index. Supports `.json`, `.json.gz`, and `.bin` (memory‑mapped binary). Auto‑detected — a `.bin` file alongside the configured path is preferred over JSON. |
+| `index_path` | Path to the preprocessed GFF3 index. **Use `.bin` (memory-mapped binary) unless you have a specific reason for JSON** — build it directly with `helixblast-index --gff3 … --fasta … --out ….bin`. `.json`/`.json.gz` remain supported (decoded once, then cached by path); a `.bin` alongside a configured JSON path is auto-preferred. |
 | `fasta_dir` | Directory with per-chromosome FASTA files (`Chr01.fa`, `Chr02.fa`, ...). Tried first |
 | `fasta_file` | Single multi-FASTA file containing all chromosomes. Fallback if `fasta_dir` chromosome not found |
 | `source` | For Worker mode: if protein and nucleotide BLAST DBs share one genome, set this to a common name so the Worker looks in a single R2 directory |
@@ -122,13 +122,13 @@ databases:
     type: "protein"
     path: "/path/to/blastdb/prot"
     transcript:
-      index_path: "/data/gff3/arachis-9102.index.json.gz"
+      index_path: "/data/gff3/arachis-9102.index.bin"
       source: "arachis-9102"          # Worker: points to R2 fasta/arachis-9102/
   - name: "arachis-9102-nuc"
     type: "nucleotide"
     path: "/path/to/blastdb/nuc"
     transcript:
-      index_path: "/data/gff3/arachis-9102.index.json.gz"
+      index_path: "/data/gff3/arachis-9102.index.bin"
       source: "arachis-9102"          # same shared R2 directory
 ```
 
@@ -148,7 +148,7 @@ make build-index
 # optional: --json db-name.index.json.gz also writes the intermediate JSON
 ```
 
-The command writes a memory‑mapped binary index directly. With `--json` it additionally produces the intermediate JSON (`db-name.index.json.gz`) for inspection/debugging or the `verify` tool. The Cloudflare Worker does **not** consume the index at all — it only reads FASTA from R2. The index contains:
+The command writes a memory‑mapped binary index directly — **this is the recommended runtime format**. With `--json` it additionally produces the intermediate JSON (`db-name.index.json.gz`) for inspection/debugging or the `verify` tool; prefer pointing `index_path` at the `.bin` and leaving JSON out of the runtime path. The Cloudflare Worker does **not** consume the index at all — it only reads FASTA from R2. The index contains:
 
 - **entries** — every GFF3 ID (gene, mRNA, CDS, exon) resolved to its parent mRNA's genomic coordinates via Parent chain traversal
 - **families** — gene → transcript/CDS/exon ID lists for inter-query
@@ -172,4 +172,4 @@ make build-prepare
 ./helixblast-prepare --json db-name.index.json.gz --out db-name.index.bin
 ```
 
-Place the `.bin` alongside the existing `.json.gz` — the server auto‑detects it via `LoadIndexAuto()`. No config change required. The binary index resumes query performance with ~0 startup RSS (OS pages in on demand vs 60–80 MB JSON decode spike).
+Place the `.bin` alongside the existing `.json.gz` — the server auto‑detects it via `LoadIndexAuto()`. No config change required. The binary format carries no Go‑heap resident cost (OS pages in on demand, released on close), whereas the JSON path keeps one cached decoded copy per index (~0.4 KB live heap per entry) after a one‑time decode.

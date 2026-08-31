@@ -29,41 +29,50 @@ HelixBLAST supports two GFF3 index formats, auto-detected at runtime via `transc
 | | JSON (`.json.gz`) | Binary (`.bin`) |
 |---|---|---|
 | Lookup | Go `map[string]T` O(1) | xxh3 hash table, linear probing, O(1) |
-| Load | Full `json.Decode` → all data in RAM | `mmap` → OS pages in on demand |
-| Startup RSS | 60–80 MB | ~0 (virtual address space only) |
-| Steady RSS | ~40 MB (all maps resident) | 5–15 MB (only accessed pages) |
-| File size | 15–30 MB (gzipped) | 22–35 MB (uncompressed) |
-| Build tool | `helixblast-index` (Go, GFF3+FASTA → index) | `helixblast-prepare` (Go, JSON → bin) |
+| Load | Full `json.Decode` on first request → decoded reader **cached by path** | `mmap` per request → OS pages in on demand |
+| Cache | Yes — invalidated on mtime/size change; `Close()` is a no-op so shared readers are safe | No — open is O(1) (~µs); each reader owns an mmap that must be closed |
+| Resident memory | ≈ 0.4 KB live heap per index entry — structurally ~2–3× the equivalent `.bin` file size (Go maps/pointers/string headers vs packed fixed-record layout); one cached copy per configured JSON index | ~0 between requests; during a request only the pages the query touched, bounded by the `.bin` file size, released on close |
+| File size | 15–30 MB (gzipped) | 22–35 MB (uncompressed) — both scale with annotation size; the gz↔bin ratio depends on content entropy, so only the decoded-heap↔bin ratio (~2–3×) is structural |
+| Build tool | `helixblast-index --json` (intermediate/debug output only) | `helixblast-index` (Go, GFF3+FASTA → `.bin` **directly** — the recommended path) |
+
+Design intent: the binary format exists for memory-constrained hosts (mmap trades disk-backed pages for RAM); the JSON format implies a host with RAM headroom, so one resident decoded copy per index is the right trade. Absolute sizes scale with the annotation, so the invariants are expressed as ratios (calibration run: synthetic 200K-entry index, Apple M1; reproducible via `internal/transcript/memory_test.go` and `bench_test.go`):
+
+- **JSON resident cost** ≈ 0.4 KB per index entry ≈ 2–3× the equivalent `.bin` file size
+- **Uncached JSON load** ≈ 4× the resident size in allocation churn, per request — and ~5 orders of magnitude slower than a cache hit (579 ms vs 4.5 µs)
+- **Cache hit** is O(1) in index size: one `stat` + map lookup
+- **Binary** carries no Go-heap cost at all; its memory footprint is page-granular and self-releasing
+
+A host should build `.bin` directly from GFF3 + FASTA with `helixblast-index` unless JSON is specifically required (inspection, `verify` equivalence checks, or a legacy pipeline that only has the JSON left) — that is precisely what the binary format is for.
 
 ### `LoadIndexAuto` auto‑detection
 
 ```
 databases.yaml: transcript.index_path = refseq.index.json.gz
 
-   1. Check refseq.index.bin exists  →  mmap + hash table
-   2. Fallback                         →  json.Decode full load
+   1. Check refseq.index.bin exists  →  mmap + hash table (per request, uncached)
+   2. Fallback                         →  cached json.Decode reader
 ```
 
-No config change required. Place `.bin` alongside the existing `.json.gz` and restart — the server picks it up.
+No config change or restart required. Place `.bin` alongside the existing `.json.gz` — the next request picks it up (`LoadIndexAuto` stats the sibling path every call).
 
-### `helixblast-index` (GFF3 → index)
+### `helixblast-index` (GFF3 + FASTA → binary, the default path)
 
 ```bash
 make build-index
 ./helixblast-index --gff3 annotations.gff3 --fasta genome.fa --out refseq.index.bin
-# optional: --json refseq.index.json.gz keeps an intermediate JSON for debugging/verify
+# optional: --json refseq.index.json.gz also keeps an intermediate JSON for debugging/verify
 ```
 
-Parses GFF3 + genome FASTA (replacing the former Node.js `prepare.js`) and writes a binary index directly. Semantics match the old pipeline: Parent-chain coordinate resolution, gene families, per-transcript exon/CDS coords, spatial features, and FASTA byte offsets.
+Parses GFF3 + genome FASTA (replacing the former Node.js `prepare.js`) and writes the **binary index directly — this is the recommended way to produce a runtime index**. Point `transcript.index_path` at the `.bin`; there is no need to involve JSON at runtime. Semantics match the old pipeline: Parent-chain coordinate resolution, gene families, per-transcript exon/CDS coords, spatial features, and FASTA byte offsets.
 
-### `helixblast-prepare` (JSON → bin)
+### `helixblast-prepare` (JSON → bin, legacy/convenience)
 
 ```bash
 go build -o helixblast-prepare ./cmd/prepare
 ./helixblast-prepare --json refseq.index.json.gz --out refseq.index.bin
 ```
 
-Reads a GFF3 JSON index (e.g. produced by `helixblast-index --json`) and writes an mmap‑friendly binary. The binary is uncompressed (~same size as decompressed JSON), but loads with zero decode cost.
+Converts an **existing** JSON index (e.g. from a legacy pipeline that no longer has the GFF3 source) into the mmap binary. Prefer `helixblast-index` straight from GFF3 + FASTA when the sources are available; use this tool only when JSON is all you have. The binary is uncompressed (~same size as decompressed JSON), but loads with zero decode cost.
 
 ### `verify`
 
