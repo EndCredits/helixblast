@@ -83,14 +83,15 @@ Without byte offsets, finding chromosome 19 in a 2.5GB multi-FASTA file requires
 
 ## Local mode (Go)
 
-`internal/transcript/local.go` handles local FASTA files. Three extraction strategies, selected automatically:
+`internal/transcript/local.go` handles local FASTA files. One streaming extractor covers every physical layout — multi-record, wrapped single-record, and single-line genomes:
 
-| Strategy | When | Speed |
-|----------|------|-------|
-| `extractRangeMulti` + Seek | `fasta_index` has offset for target chromosome | O(1) — direct jump |
-| `extractRangeMulti` + scan | Multi-FASTA without index (fallback) | O(n) — line-by-line header scan |
-| `extractRangeScanner` | Single-chromosome file, standard line length | O(chromosome) — line-level skipping |
-| `extractRangeChunked` | Single-chromosome file, long lines (>120bp) | O(chromosome) — byte-by-byte streaming |
+| Path | When | Speed |
+|------|------|-------|
+| Seek + verify | `fasta_index` has offset for target chromosome | O(1) — direct jump; header is verified, a stale offset falls back to scan |
+| Linear scan | Multi-FASTA without index (or seek fallback) | O(n) to the record start |
+| Stream | Any record body | O(64 KB + result) memory — line length irrelevant |
+
+Because fragments are processed in place, a 250 MB single-line chromosome streams with the same ~64 KB footprint as a 60-column wrapped file. Contract: `\r`/space/tab are ignored anywhere; `>` at a line start always opens a new record; a request past the record end returns the available partial result rather than an error. Characterization tests: `internal/transcript/local_test.go` against the deterministic fixtures in `testdata/`.
 
 The scanned sequence covers `(start - 5000)` to `end` to include 5kb upstream. Exon and CDS stitching is done client-side from the returned coordinates.
 

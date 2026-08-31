@@ -245,302 +245,269 @@ func extractSequence(fastaDir, fastaFile, chr string, start, end int, strand str
 	return "", nil
 }
 
+const (
+	extractBufSize  = 64 * 1024
+	headerNameLimit = 4 * 1024
+)
+
+// extractRange returns bases [start,end] of record targetChr (every residue
+// of the first record when targetChr == ""). fastaIndex optionally supplies
+// byte offsets of record headers for O(1) positioning; a stale offset falls
+// back to a linear scan. Requests past the record end return the available
+// partial result. Lines are processed in fixed-size fragments, so memory is
+// O(extractBufSize + result) regardless of line length — single-line
+// genomes included.
 func extractRange(path, targetChr string, start, end int, fastaIndex map[string]int64) (string, error) {
+	if targetChr != "" {
+		if off, ok := fastaIndex[targetChr]; ok {
+			seq, found, err := extractAtOffset(path, off, targetChr, start, end)
+			if err != nil {
+				return "", err
+			}
+			if found {
+				return seq, nil
+			}
+			// stale/invalid offset — fall through to linear scan
+		}
+	}
+
 	f, err := os.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("open %s: %w", path, err)
 	}
 	defer f.Close()
 
-	if targetChr != "" {
-		return extractRangeMulti(f, targetChr, start, end, fastaIndex)
+	x := newExtractor(targetChr, start, end)
+	if err := x.scan(bufio.NewReaderSize(f, extractBufSize), f.Name()); err != nil {
+		return "", err
 	}
+	return x.result(f.Name())
+}
 
-	if isLongLineFASTA(f) {
-		f.Close()
-		f, err = os.Open(path)
-		if err != nil {
-			return "", fmt.Errorf("reopen %s: %w", path, err)
-		}
-		defer f.Close()
-		return extractRangeChunked(f, targetChr, start, end)
-	}
-
-	f.Close()
-	f, err = os.Open(path)
+// extractAtOffset verifies that a header line sits at the recorded byte
+// offset and extracts from there. found=false signals a stale offset.
+func extractAtOffset(path string, off int64, targetChr string, start, end int) (string, bool, error) {
+	f, err := os.Open(path)
 	if err != nil {
-		return "", fmt.Errorf("reopen %s: %w", path, err)
+		return "", false, fmt.Errorf("open %s: %w", path, err)
 	}
 	defer f.Close()
-	return extractRangeScanner(f, targetChr, start, end)
-}
 
-func extractRangeMulti(f *os.File, targetChr string, start, end int, fastaIndex map[string]int64) (string, error) {
-	reader := bufio.NewReaderSize(f, 1*1024*1024)
+	if _, err := f.Seek(off, io.SeekStart); err != nil {
+		return "", false, nil
+	}
+	br := bufio.NewReaderSize(f, extractBufSize)
 
-	if offset, ok := fastaIndex[targetChr]; ok {
-		f.Seek(offset, 0)
-		reader = bufio.NewReaderSize(f, 1*1024*1024)
-		// Verify header
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			return "", fmt.Errorf("seek to %s failed: %w", targetChr, err)
-		}
-		trimmed := strings.TrimSpace(line)
-		if !strings.HasPrefix(trimmed, ">") {
-			return "", fmt.Errorf("expected header at offset %d, got: %s", offset, trimmed)
-		}
-	} else {
-		// Phase 1a: fast scan for target chromosome header
-		for {
-			line, err := reader.ReadString('\n')
-			if err != nil {
-				return "", fmt.Errorf("chromosome %s not found in %s", targetChr, f.Name())
-			}
-
-			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, ">") {
-				header := strings.TrimPrefix(trimmed, ">")
-				header = strings.Split(header, " ")[0]
-				if header == targetChr {
-					break
-				}
-			}
-		}
+	name, isHeader, err := readHeaderName(br)
+	if err != nil || !isHeader || name != targetChr {
+		return "", false, nil
 	}
 
-	// Phase 2: extract range from target chromosome lines
-	var sb strings.Builder
-	need := end - start + 1
-	skipped := 0
+	x := newExtractor(targetChr, start, end)
+	x.inTarget = true
+	x.seenTarget = true
+	if err := x.scan(br, f.Name()); err != nil {
+		return "", false, err
+	}
+	seq, err := x.result(f.Name())
+	return seq, true, err
+}
 
+// readHeaderName consumes one line (assumed short) and returns the record
+// name if the line is a FASTA header.
+func readHeaderName(br *bufio.Reader) (string, bool, error) {
+	var name strings.Builder
+	sawAny := false
 	for {
-		line, err := reader.ReadString('\n')
+		ch, err := br.ReadByte()
+		if err == io.EOF {
+			break
+		}
 		if err != nil {
+			return "", false, err
+		}
+		if ch == '\n' {
 			break
 		}
-
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, ">") {
-			break
-		}
-
-		lineLen := len(trimmed)
-
-		if skipped+lineLen < start {
-			skipped += lineLen
-			continue
-		}
-
-		offset := start - skipped - 1
-		if offset < 0 {
-			offset = 0
-		}
-
-		remaining := need - sb.Len()
-		chunk := trimmed
-		endIdx := offset + remaining
-		if endIdx < lineLen {
-			chunk = trimmed[offset:endIdx]
-		} else if offset > 0 {
-			chunk = trimmed[offset:]
-		}
-
-		sb.WriteString(chunk)
-		skipped += lineLen
-
-		if sb.Len() >= need {
-			return sb.String()[:need], nil
-		}
-	}
-
-	if sb.Len() > 0 {
-		return sb.String(), nil
-	}
-
-	return "", fmt.Errorf("range %d-%d not found in %s", start, end, f.Name())
-}
-
-func isLongLineFASTA(f *os.File) bool {
-	scanner := bufio.NewScanner(f)
-	n := 0
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, ">") {
-			continue
-		}
-		if len(line) > 120 {
-			return true
-		}
-		n++
-		if n >= 200 {
-			break
-		}
-	}
-	return false
-}
-
-func extractRangeScanner(f *os.File, targetChr string, start, end int) (string, error) {
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 1024*1024), 10*1024*1024)
-
-	var sb strings.Builder
-	inTarget := targetChr == ""
-	skipped := 0
-	need := end - start + 1
-
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-
-		if strings.HasPrefix(line, ">") {
-			if sb.Len() >= need {
-				return sb.String()[:need], nil
-			}
-			if targetChr != "" {
-				header := strings.TrimPrefix(line, ">")
-				header = strings.Split(header, " ")[0]
-				inTarget = header == targetChr
-				skipped = 0
-			}
-			continue
-		}
-
-		if !inTarget {
-			continue
-		}
-
-		lineLen := len(line)
-
-		if skipped+lineLen < start {
-			skipped += lineLen
-			continue
-		}
-
-		offset := start - skipped - 1
-		if offset < 0 {
-			offset = 0
-		}
-
-		remaining := need - sb.Len()
-		chunk := line
-		endIdx := offset + remaining
-		if endIdx < lineLen {
-			chunk = line[offset:endIdx]
-		} else if offset > 0 {
-			chunk = line[offset:]
-		}
-
-		sb.WriteString(chunk)
-		skipped += lineLen
-
-		if sb.Len() >= need {
-			return sb.String()[:need], nil
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return "", fmt.Errorf("read %s: %w", f.Name(), err)
-	}
-
-	if sb.Len() > 0 {
-		return sb.String(), nil
-	}
-
-	return "", fmt.Errorf("range %d-%d not found in %s", start, end, f.Name())
-}
-
-func extractRangeChunked(f *os.File, targetChr string, start, end int) (string, error) {
-	reader := bufio.NewReaderSize(f, 64*1024)
-
-	var sb strings.Builder
-	var headerBuf strings.Builder
-	inTarget := targetChr == ""
-	skipped := 0
-	need := end - start + 1
-	inHeader := false
-	totalRead := 0
-
-	buf := make([]byte, 64*1024)
-
-	for {
-		n, err := reader.Read(buf)
-		if n == 0 && err != nil {
-			break
-		}
-
-		for i := 0; i < n; i++ {
-			ch := buf[i]
-
-			if ch == '\n' {
-				if inHeader {
-					line := strings.TrimSpace(headerBuf.String())
-					headerBuf.Reset()
-					inHeader = false
-					if strings.HasPrefix(line, ">") {
-						if targetChr != "" {
-							header := strings.TrimPrefix(line, ">")
-							header = strings.Split(header, " ")[0]
-							inTarget = header == targetChr
-							skipped = 0
-						}
-						continue
-					}
-					// non-header line data already processed char by char below
+		if ch == '\r' || ch == '\t' || ch == ' ' {
+			if sawAny {
+				if ch != '\r' {
+					// space/tab ends the name; ignore the rest of the line
+					_, _ = br.ReadString('\n')
 				}
-				continue
+				break
 			}
-
-			if ch == '>' && !inHeader && totalRead == 0 {
-				inHeader = true
-				headerBuf.WriteByte(ch)
-				continue
-			}
-
-			if inHeader {
-				headerBuf.WriteByte(ch)
-				continue
-			}
-
-			if ch == '\r' || ch == ' ' || ch == '\t' {
-				continue
-			}
-
-			totalRead++
-
-			if !inTarget {
-				if targetChr != "" && ch == '>' {
-					// This should not happen within a sequence line
-				}
-				continue
-			}
-
-			if skipped+1 < start {
-				skipped++
-				continue
-			}
-
-			if sb.Len() >= need {
-				return sb.String()[:need], nil
-			}
-
-			sb.WriteByte(ch)
-			skipped++
+			continue
 		}
-
-		if sb.Len() >= need {
-			return sb.String()[:need], nil
+		if !sawAny {
+			if ch != '>' {
+				return "", false, nil // not a header line
+			}
+			sawAny = true
+			continue
 		}
+		if name.Len() < headerNameLimit {
+			name.WriteByte(ch)
+		}
+	}
+	if !sawAny {
+		return "", false, nil
+	}
+	return name.String(), true, nil
+}
 
-		if err != nil {
-			break
+// extractor is a byte-level FASTA state machine. It never materializes a
+// line: fragments are consumed in place.
+type extractor struct {
+	targetChr string
+	start     int
+	need      int
+
+	sb         strings.Builder
+	pos        int // 1-based residue counter inside the target record
+	inTarget   bool
+	seenTarget bool
+
+	atLineStart    bool
+	inHeader       bool
+	headerName     strings.Builder
+	headerDone     bool
+	headerOverflow bool
+
+	finished bool // stop scanning entirely
+}
+
+func newExtractor(targetChr string, start, end int) extractor {
+	if start < 1 {
+		start = 1
+	}
+	return extractor{
+		targetChr:   targetChr,
+		start:       start,
+		need:        end - start + 1,
+		inTarget:    targetChr == "",
+		seenTarget:  targetChr == "",
+		atLineStart: true,
+	}
+}
+
+func (x *extractor) scan(br *bufio.Reader, name string) error {
+	for !x.finished {
+		frag, err := br.ReadSlice('\n')
+		for _, ch := range frag {
+			x.feed(ch)
+			if x.finished {
+				return nil
+			}
+		}
+		switch {
+		case err == bufio.ErrBufferFull:
+			continue
+		case err == io.EOF:
+			x.endLine() // final line without trailing newline
+			return nil
+		case err != nil:
+			return fmt.Errorf("read %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func (x *extractor) feed(ch byte) {
+	switch {
+	case ch == '\n':
+		x.endLine()
+		return
+	case x.inHeader:
+		x.feedHeader(ch)
+		return
+	case ch == '\r' || ch == ' ' || ch == '\t':
+		return
+	}
+
+	if x.atLineStart {
+		x.atLineStart = false
+		if ch == '>' {
+			x.inHeader = true
+			x.headerName.Reset()
+			x.headerDone = false
+			x.headerOverflow = false
+			return
 		}
 	}
 
-	if sb.Len() > 0 {
-		return sb.String(), nil
+	if !x.inTarget {
+		return
+	}
+	x.pos++
+	if x.pos >= x.start && x.sb.Len() < x.need {
+		x.sb.WriteByte(ch)
+	}
+	if x.sb.Len() >= x.need {
+		x.finished = true
+	}
+}
+
+func (x *extractor) feedHeader(ch byte) {
+	if !x.headerDone {
+		if ch == ' ' || ch == '\t' {
+			x.headerDone = true
+			return
+		}
+		if x.headerName.Len() < headerNameLimit {
+			x.headerName.WriteByte(ch)
+		} else {
+			x.headerOverflow = true
+		}
+	}
+}
+
+func (x *extractor) endLine() {
+	if !x.inHeader {
+		x.atLineStart = true
+		return
+	}
+	x.inHeader = false
+	x.atLineStart = true
+
+	name := ""
+	if !x.headerOverflow {
+		name = x.headerName.String()
 	}
 
-	return "", fmt.Errorf("range %d-%d not found in %s", start, end, f.Name())
+	if x.inTarget {
+		if x.targetChr == "" {
+			if x.pos > 0 {
+				// second record in single-record scope: our record ended
+				x.finished = true
+				return
+			}
+			// opening header of the record we extract from
+			return
+		}
+		// leaving the target record — return what we have (partial or full)
+		x.finished = true
+		return
+	}
+
+	if x.targetChr != "" && !x.headerOverflow && name == x.targetChr {
+		x.inTarget = true
+		x.seenTarget = true
+		x.pos = 0
+	}
+}
+
+func (x *extractor) result(name string) (string, error) {
+	if x.targetChr != "" && !x.seenTarget {
+		return "", fmt.Errorf("chromosome %s not found in %s", x.targetChr, name)
+	}
+	if x.sb.Len() == 0 {
+		return "", fmt.Errorf("range %d-%d not found in %s", x.start, x.start+x.need-1, name)
+	}
+	if x.sb.Len() >= x.need {
+		return x.sb.String()[:x.need], nil
+	}
+	return x.sb.String(), nil
 }
 
 func reverseComplement(seq string) string {
