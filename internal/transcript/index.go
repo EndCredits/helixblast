@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/EndCredits/helixblast/internal/index"
 )
@@ -31,11 +33,65 @@ func LoadIndexAuto(path string) (IndexReader, error) {
 		return index.Open(binPath)
 	}
 
+	// JSON fallback: a full gzip+json decode per request is expensive
+	// (hundreds of ms and heavy GC churn). Cache the decoded reader, keyed by
+	// path and invalidated on mtime/size change. This is safe because
+	// jsonIndexReader.Close() is a no-op — callers may Close a shared reader
+	// without affecting others. Binary/mmap readers are deliberately NOT
+	// cached: opening one is ~25µs and each owns an mmap that must be closed.
+	return loadJSONCached(path)
+}
+
+type jsonCacheEntry struct {
+	mu      sync.Mutex
+	reader  *jsonIndexReader
+	modTime time.Time
+	size    int64
+	valid   bool
+}
+
+var (
+	jsonCacheMu sync.Mutex
+	jsonCache   = map[string]*jsonCacheEntry{}
+)
+
+func loadJSONCached(path string) (IndexReader, error) {
+	jsonCacheMu.Lock()
+	entry, ok := jsonCache[path]
+	if !ok {
+		entry = &jsonCacheEntry{}
+		jsonCache[path] = entry
+	}
+	jsonCacheMu.Unlock()
+
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+
+	st, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("stat index file: %w", err)
+	}
+	if entry.valid && entry.modTime.Equal(st.ModTime()) && entry.size == st.Size() {
+		return entry.reader, nil
+	}
+
 	gff, err := LoadIndex(path)
 	if err != nil {
 		return nil, err
 	}
-	return &jsonIndexReader{data: gff}, nil
+	entry.reader = &jsonIndexReader{data: gff}
+	entry.modTime = st.ModTime()
+	entry.size = st.Size()
+	entry.valid = true
+	return entry.reader, nil
+}
+
+// invalidateJSONCache clears all cached JSON readers. Used by tests and
+// available for explicit cache resets.
+func invalidateJSONCache() {
+	jsonCacheMu.Lock()
+	jsonCache = map[string]*jsonCacheEntry{}
+	jsonCacheMu.Unlock()
 }
 
 type jsonIndexReader struct {
