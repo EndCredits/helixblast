@@ -166,7 +166,7 @@ func BenchmarkLookupEntryResident(b *testing.B) {
 	}
 }
 
-func BenchmarkSpatialV2Resident(b *testing.B) {
+func BenchmarkSpatialResident(b *testing.B) {
 	for _, kind := range []string{"bin", "json"} {
 		b.Run(kind, func(b *testing.B) {
 			jsonPath, binPath := buildIndexes(b)
@@ -182,7 +182,7 @@ func BenchmarkSpatialV2Resident(b *testing.B) {
 			defer r.Close()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if _, err := transcript.SpatialLookupV2(r, "Chr03", 12_500_000); err != nil {
+				if _, err := transcript.SpatialLookup(r, "Chr03", 12_500_000, 12_500_000); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -210,11 +210,95 @@ func BenchmarkRequestEndToEnd(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				if _, err := transcript.SpatialLookupV2(r, "Chr03", 12_500_000); err != nil {
+				if _, err := transcript.SpatialLookup(r, "Chr03", 12_500_000, 12_500_000); err != nil {
 					b.Fatal(err)
 				}
 				r.Close()
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SpatialLookup stress baseline: cost vs features-per-chromosome.
+// ---------------------------------------------------------------------------
+
+// buildSingleChromBin writes a .bin whose only chromosome carries genes×3
+// spatial features laid out exactly like the production builder (sorted by
+// start, gene/mRNA/CDS nested per locus, 1 kb intergenic gaps).
+func buildSingleChromBin(b *testing.B, genes int) string {
+	b.Helper()
+	gff := &transcript.GFF3Data{
+		Entries:    make(transcript.GFF3Index, genes*3),
+		Families:   make(transcript.GFF3Families, genes),
+		Coords:     make(transcript.GFF3Coords, genes),
+		FastaIndex: map[string]int64{"Chr01": 0},
+		Spatial:    make(transcript.GFF3Spatial, 1),
+	}
+	for i := 0; i < genes; i++ {
+		start := 1000 + i*3000
+		end := start + 2000
+		gene := fmt.Sprintf("g%07d", i)
+		tx := gene + ".t1"
+		cds := tx + ".CDS1"
+		for _, id := range []string{gene, tx, cds} {
+			gff.Entries[id] = transcript.GFF3Entry{Chr: "Chr01", Start: start, End: end, Strand: "+", Type: "gene", Gene: gene}
+		}
+		gff.Families[gene] = transcript.GFF3Family{Transcripts: []string{tx}, CDSs: []string{cds}, Exons: []string{tx + ".exon1"}}
+		gff.Coords[tx] = transcript.TranscriptRegions{
+			Exons: []transcript.RegionCoord{{Start: start, End: start + 800}, {Start: start + 1200, End: end}},
+			CDSs:  []transcript.RegionCoord{{Start: start + 100, End: end - 100}},
+		}
+		gff.Spatial["Chr01"] = append(gff.Spatial["Chr01"],
+			transcript.SpatialFeature{Start: start, End: end, ID: gene, Type: "gene"},
+			transcript.SpatialFeature{Start: start, End: end, ID: tx, Type: "mRNA"},
+			transcript.SpatialFeature{Start: start + 100, End: end - 100, ID: cds, Type: "CDS"},
+		)
+	}
+	path := b.TempDir() + "/scale.index.bin"
+	if err := prepare.BuildBinaryIndexFromData(gff, path); err != nil {
+		b.Fatal(err)
+	}
+	return path
+}
+
+// Mid-chromosome intergenic query: scans ~half the features (break at first
+// Start > pos), copying ALL features of the chromosome.
+func BenchmarkSpatial_Scale(b *testing.B) {
+	for _, genes := range []int{20_000, 100_000, 500_000} {
+		b.Run(fmt.Sprintf("genes_%d", genes), func(b *testing.B) {
+			path := buildSingleChromBin(b, genes)
+			r, err := transcript.LoadIndexAuto(path)
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer r.Close()
+			pos := 1000 + (genes/2)*3000 + 2500 // inside the intergenic gap
+			b.ReportMetric(float64(genes*3)/1000, "Kfeat")
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := transcript.SpatialLookup(r, "Chr01", pos, pos); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+// Worst case: position past every feature — full scan, no early break.
+func BenchmarkSpatial_PastEnd(b *testing.B) {
+	const genes = 100_000
+	path := buildSingleChromBin(b, genes)
+	r, err := transcript.LoadIndexAuto(path)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer r.Close()
+	pos := 1000 + genes*3000 + 100_000
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := transcript.SpatialLookup(r, "Chr01", pos, pos); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

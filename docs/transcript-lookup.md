@@ -165,9 +165,9 @@ HelixBLAST Server
 
 The full genome index can contain 200K+ entries. Decompressing and JSON-parsing it in a Worker would exceed the 10ms CPU time limit (free plan). The HelixBLAST server has no such constraint — a full decode is O(index size) (calibration: ~580 ms and ~4× the resident heap in allocation churn for a 200K-entry index), which is why the server caches the decoded reader per path: the first request pays, later requests hit at ~5 µs regardless of index size. Worker only handles the I/O-bound sequence extraction from R2.
 
-### Known limitation: spatial lookups materialize whole chromosomes
+### Spatial search implementation notes
 
-`IndexReader.Spatial(chr)` copies the entire per-chromosome feature array on every call — cost is O(features on that chromosome), measured at ~80 ns and ~90 B per feature (binary reader) / ~25 ns and ~80 B per feature (cached JSON reader) — even though a point query only needs a narrow window. The fix is a windowed/binary-search lookup on the sorted array (mmap pages in the binary case). Tracked as the next optimization after caching; benchmark fixtures: `internal/transcript/bench_test.go` (`BenchmarkSpatialV2Resident`).
+`SpatialSearch(chr, start, end)` is windowed and allocation-free per feature scanned: binary search over the start-sorted array, one bounded backward pass for overlaps + the upstream flank (max `End` below the window — not merely the last feature in start order, which nesting would otherwise expose), downstream read at the boundary. Only returned records materialize their ID/Type strings. Cost is O(log n + window) with ~700 B / ~10 allocations per query on a 1.5 M-feature chromosome (measured; `BenchmarkSpatial_Scale`). The backward window (`spatialBackScan` = 8 Mb) assumes no gene is longer — documented in both reader implementations and cross-checked against a naive reference in `TestSpatialSearch_CrossCheckRealReaders`.
 
 ### Deploying the Worker
 
@@ -223,7 +223,7 @@ This design does a single genome scan instead of five separate ones. The Worker 
 
 ## Spatial Search
 
-When a BLAST hit lands on a chromosome database (`is_chromosome_db: true`), HelixBLAST automatically resolves the genomic position to overlapping GFF3 features via `/api/v1/spatial`. The spatial index is built alongside the main GFF3 index:
+When a BLAST hit lands on a chromosome database (`is_chromosome_db: true`), HelixBLAST automatically resolves the hit's genomic **range** (subject span across all HSPs) to overlapping GFF3 features via `/api/v1/spatial`. The spatial index is built alongside the main GFF3 index:
 
 ```json
 {
@@ -237,7 +237,7 @@ When a BLAST hit lands on a chromosome database (`is_chromosome_db: true`), Heli
 }
 ```
 
-Features are sorted by `start` position on each chromosome. The lookup finds all overlapping features plus the nearest upstream and downstream neighbors — so even intergenic hits show flanking genes with distance markers.
+Features are sorted by `start` position on each chromosome. The lookup finds every feature whose span intersects the query range — each returned at **full indexed length, never clipped to the hit** (a hit covering only part of a gene still reports the gene's complete coordinates) — plus the nearest upstream and downstream neighbors, so even intergenic hits show flanking features with distance markers. In standard GFF3 an mRNA never stands alone: it is always nested under a gene, so clicking any flanking ID (gene, mRNA, CDS, or exon) resolves to the full gene family through Transcript Lookup.
 
 This enables a complete workflow: BLAST a sequence → see where it hits on the chromosome → click "Lookup Region" or auto-resolve → see overlapping genes → click any gene/transcript/CDS ID → view its full sequence and exon structure.
 

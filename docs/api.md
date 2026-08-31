@@ -194,10 +194,12 @@ The `sequence` field contains the genome scan from `scan_start` to `scan_end` (5
 ## Spatial Lookup
 
 ```
-GET /api/v1/spatial?db=<name>&chr=<chr>&pos=<pos>
+GET /api/v1/spatial?db=<name>&chr=<chr>&start=<n>&end=<n>    # range query
+GET /api/v1/spatial?db=<name>&chr=<chr>&pos=<n>              # point query (start==end)
 → {
     "chromosome": "Chr01",
-    "position": 17146628,
+    "start": 17146608,
+    "end": 17148002,
     "features": [
       { "start": 17146608, "end": 17148002, "id": "g1065", "type": "gene" },
       { "start": 17146608, "end": 17148002, "id": "g1065.t1", "type": "mRNA" },
@@ -208,9 +210,9 @@ GET /api/v1/spatial?db=<name>&chr=<chr>&pos=<pos>
   }
 ```
 
-Finds all GFF3 features (gene, mRNA, CDS, exon) overlapping a genomic position, plus the nearest upstream and downstream features for orientation. Returns `404` if the chromosome is not in the spatial index.
+Finds all GFF3 features (gene, mRNA, CDS, exon) whose span **intersects the query range**, plus the nearest upstream and downstream features for orientation. Reversed bounds (`start > end`, e.g. from minus-strand BLAST HSPs) are normalized; the response carries the normalized range. **Every returned feature keeps its full indexed span — never clipped to the query window**: a hit covering only the 3′ end of a gene still reports the gene's complete coordinates. Returns `404` if the chromosome is not in the spatial index.
 
-Set `is_chromosome_db: true` in `databases.yaml` to enable automatic spatial lookup when viewing BLAST alignment results.
+Set `is_chromosome_db: true` in `databases.yaml` to enable automatic spatial lookup when viewing BLAST alignment results — the frontend sends the hit's full subject span (min/max across all HSPs).
 
 ## Offline Cache
 

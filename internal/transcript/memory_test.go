@@ -132,7 +132,7 @@ func TestMemoryProfile_JSONCache(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := transcript.SpatialLookupV2(rr, "Chr03", 12_500_000); err != nil {
+		if _, err := transcript.SpatialLookup(rr, "Chr03", 12_500_000, 12_500_000); err != nil {
 			t.Fatal(err)
 		}
 		rr.Close()

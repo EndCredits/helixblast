@@ -51,8 +51,8 @@ export default function SpatialPanel({ result, loading, onSelectFeature }: Props
         <>
           <Text strong style={{ fontSize: 13 }}>
             {result.features.length > 0
-              ? t('home.spatial.overlappingAt', { count: result.features.length, pos: result.position })
-              : t('home.spatial.noOverlap', { pos: result.position })}
+              ? t('home.spatial.overlappingAt', { count: result.features.length, pos: `${result.start}-${result.end}` })
+              : t('home.spatial.noOverlap', { pos: `${result.start}-${result.end}` })}
           </Text>
           {result.features.map((f) => featureCard(f.id, f.type, f.start, f.end))}
           {result.features.length > 0 && (
@@ -67,7 +67,7 @@ export default function SpatialPanel({ result, loading, onSelectFeature }: Props
               result.upstream.start,
               result.upstream.end,
               <Tag color="default">
-                ↑ {t('home.spatial.upstream')} · {result.position - result.upstream.end} bp
+                ↑ {t('home.spatial.upstream')} · {result.start - result.upstream.end} bp
               </Tag>,
             )}
           {result.downstream &&
@@ -77,7 +77,7 @@ export default function SpatialPanel({ result, loading, onSelectFeature }: Props
               result.downstream.start,
               result.downstream.end,
               <Tag color="default">
-                ↓ {t('home.spatial.downstream')} · {result.downstream.start - result.position} bp
+                ↓ {t('home.spatial.downstream')} · {result.downstream.start - result.end} bp
               </Tag>,
             )}
         </>

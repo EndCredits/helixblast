@@ -137,15 +137,21 @@ export default function BlastPage() {
       setSpatialResult(null)
       return
     }
-    const hsp = selectedHit.alignments[0]
-    if (!hsp) {
+    if (selectedHit.alignments.length === 0) {
       setSpatialResult(null)
       return
     }
-    const pos = Math.floor((hsp.subject_start + hsp.subject_end) / 2)
+    // Full subject span across all HSPs; BLAST minus-strand HSPs arrive with
+    // subject_start > subject_end, so normalize per HSP before min/max.
+    let lo = Infinity
+    let hi = -Infinity
+    for (const hsp of selectedHit.alignments) {
+      lo = Math.min(lo, hsp.subject_start, hsp.subject_end)
+      hi = Math.max(hi, hsp.subject_start, hsp.subject_end)
+    }
     let cancelled = false
     setSpatialLoading(true)
-    fetchSpatial(currentDB.name, selectedHit.subject_id, pos)
+    fetchSpatial(currentDB.name, selectedHit.subject_id, lo, hi)
       .then((r) => {
         if (cancelled) return
         setSpatialResult(r)

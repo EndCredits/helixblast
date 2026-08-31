@@ -163,7 +163,8 @@ export interface SpatialFeature {
 
 export interface SpatialResult {
   chromosome: string
-  position: number
+  start: number
+  end: number
   features: SpatialFeature[]
   upstream?: SpatialFeature
   downstream?: SpatialFeature
@@ -172,10 +173,11 @@ export interface SpatialResult {
 export async function fetchSpatial(
   db: string,
   chr: string,
-  pos: number,
+  start: number,
+  end: number,
 ): Promise<SpatialResult> {
   const res = await fetch(
-    `${BASE}/spatial?db=${encodeURIComponent(db)}&chr=${encodeURIComponent(chr)}&pos=${pos}`,
+    `${BASE}/spatial?db=${encodeURIComponent(db)}&chr=${encodeURIComponent(chr)}&start=${start}&end=${end}`,
   )
   if (!res.ok) {
     const err = await res.json()

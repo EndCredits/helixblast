@@ -14,7 +14,7 @@ type IndexReader interface {
 	LookupEntry(id string) (*index.Entry, bool)
 	LookupFamily(gene string) (*index.Family, bool)
 	LookupCoords(id string) (*index.CoordRegions, bool)
-	Spatial(chr string) ([]index.SpatialFeat, error)
+	SpatialSearch(chr string, start, end int) (*index.SpatialHits, error)
 	FastaOffset(chr string) (int64, bool)
 	FastaIndexMap() map[string]int64
 	Close() error
@@ -129,17 +129,69 @@ func (r *jsonIndexReader) LookupCoords(id string) (*index.CoordRegions, bool) {
 	return out, true
 }
 
-func (r *jsonIndexReader) Spatial(chr string) ([]index.SpatialFeat, error) {
+func (r *jsonIndexReader) SpatialSearch(chr string, start, end int) (*index.SpatialHits, error) {
 	feats, ok := r.data.Spatial[chr]
 	if !ok {
 		return nil, fmt.Errorf("chromosome %s not found in spatial index", chr)
 	}
-	out := make([]index.SpatialFeat, len(feats))
-	for i, f := range feats {
-		out[i] = index.SpatialFeat{Start: f.Start, End: f.End, ID: f.ID, Type: f.Type}
+	if start > end {
+		start, end = end, start
+	}
+	n := len(feats)
+
+	// upperBound on Start (builder guarantees start-sorted order)
+	lo, hi := 0, n
+	for lo < hi {
+		mid := (lo + hi) / 2
+		if feats[mid].Start <= end {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	ub := lo
+
+	// single bounded backward pass: overlaps + upstream flank (see
+	// index.Reader.SpatialSearch for the windowing assumption)
+	out := &index.SpatialHits{Overlapping: make([]index.SpatialFeat, 0, 8)}
+	bestEnd, bestIdx := -1, -1
+	limit := start - spatialBackScan
+	for i := ub - 1; i >= 0; i-- {
+		if feats[i].Start < limit {
+			break
+		}
+		switch {
+		case feats[i].End >= start:
+			out.Overlapping = append(out.Overlapping, index.SpatialFeat{
+				Start: feats[i].Start, End: feats[i].End, ID: feats[i].ID, Type: feats[i].Type,
+			})
+		case feats[i].End >= bestEnd:
+			bestEnd, bestIdx = feats[i].End, i
+		}
+	}
+	for i, j := 0, len(out.Overlapping)-1; i < j; i, j = i+1, j-1 {
+		out.Overlapping[i], out.Overlapping[j] = out.Overlapping[j], out.Overlapping[i]
+	}
+	if bestIdx >= 0 {
+		f := index.SpatialFeat{
+			Start: feats[bestIdx].Start, End: feats[bestIdx].End,
+			ID: feats[bestIdx].ID, Type: feats[bestIdx].Type,
+		}
+		out.Upstream = &f
+	}
+	if ub < n {
+		f := index.SpatialFeat{
+			Start: feats[ub].Start, End: feats[ub].End,
+			ID: feats[ub].ID, Type: feats[ub].Type,
+		}
+		out.Downstream = &f
 	}
 	return out, nil
 }
+
+// spatialBackScan must stay in sync with internal/index.Reader's window:
+// bounds the leftward upstream search by coordinate distance.
+const spatialBackScan = 8_000_000
 
 func (r *jsonIndexReader) FastaOffset(chr string) (int64, bool) {
 	off, ok := r.data.FastaIndex[chr]

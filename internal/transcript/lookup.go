@@ -72,36 +72,43 @@ func convertRegions(rs []index.Region) []RegionCoord {
 	return out
 }
 
-func SpatialLookupV2(idx IndexReader, chr string, pos int) (*SpatialResult, error) {
-	features, err := idx.Spatial(chr)
+// SpatialLookup answers a genomic range query [start,end] (a point query
+// passes start==end; reversed bounds are normalized — BLAST minus-strand
+// HSPs have subject_start > subject_end). Every returned feature carries its
+// full indexed span, never clipped to the query window: overlapping features
+// intersect the range, upstream is the feature with the greatest End below
+// the range, downstream the feature with the smallest Start above it.
+func SpatialLookup(idx IndexReader, chr string, start, end int) (*SpatialResult, error) {
+	if start > end {
+		start, end = end, start
+	}
+	hits, err := idx.SpatialSearch(chr, start, end)
 	if err != nil {
 		return nil, err
 	}
 
-	overlapping := make([]SpatialFeature, 0)
-	var upstream, downstream *SpatialFeature
-
-	for i := range features {
-		f := features[i]
-		if f.Start <= pos && pos <= f.End {
-			overlapping = append(overlapping, SpatialFeature{Start: f.Start, End: f.End, ID: f.ID, Type: f.Type})
-		}
-		if f.End < pos {
-			c := SpatialFeature{Start: f.Start, End: f.End, ID: f.ID, Type: f.Type}
-			upstream = &c
-		}
-		if f.Start > pos && downstream == nil {
-			c := SpatialFeature{Start: f.Start, End: f.End, ID: f.ID, Type: f.Type}
-			downstream = &c
-			break
-		}
+	features := make([]SpatialFeature, len(hits.Overlapping))
+	for i, f := range hits.Overlapping {
+		features[i] = SpatialFeature{Start: f.Start, End: f.End, ID: f.ID, Type: f.Type}
 	}
 
-	return &SpatialResult{
+	result := &SpatialResult{
 		Chromosome: chr,
-		Position:   pos,
-		Features:   overlapping,
-		Upstream:   upstream,
-		Downstream: downstream,
-	}, nil
+		Start:      start,
+		End:        end,
+		Features:   features,
+	}
+	if hits.Upstream != nil {
+		result.Upstream = &SpatialFeature{
+			Start: hits.Upstream.Start, End: hits.Upstream.End,
+			ID: hits.Upstream.ID, Type: hits.Upstream.Type,
+		}
+	}
+	if hits.Downstream != nil {
+		result.Downstream = &SpatialFeature{
+			Start: hits.Downstream.Start, End: hits.Downstream.End,
+			ID: hits.Downstream.ID, Type: hits.Downstream.Type,
+		}
+	}
+	return result, nil
 }

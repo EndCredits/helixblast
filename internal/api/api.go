@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"path"
 	"strings"
 
@@ -286,17 +287,43 @@ func (s *Server) handleJobEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSpatialLookup(w http.ResponseWriter, r *http.Request) {
-	db := r.URL.Query().Get("db")
-	chr := r.URL.Query().Get("chr")
-	posStr := r.URL.Query().Get("pos")
-	if db == "" || chr == "" || posStr == "" {
-		jsonError(w, http.StatusBadRequest, "db, chr, and pos are required parameters")
+	q := r.URL.Query()
+	db := q.Get("db")
+	chr := q.Get("chr")
+	if db == "" || chr == "" {
+		jsonError(w, http.StatusBadRequest, "db and chr are required parameters")
 		return
 	}
 
-	var posInt int
-	if _, err := fmt.Sscanf(posStr, "%d", &posInt); err != nil || posInt < 1 {
-		jsonError(w, http.StatusBadRequest, "pos must be a positive integer")
+	// Range query: start + end. Point query (legacy/simple): pos.
+	var start, end int
+	posStr := q.Get("pos")
+	startStr := q.Get("start")
+	endStr := q.Get("end")
+	switch {
+	case startStr != "" && endStr != "":
+		var err1, err2 error
+		if start, err1 = strconv.Atoi(startStr); err1 != nil {
+			jsonError(w, http.StatusBadRequest, "start must be an integer")
+			return
+		}
+		if end, err2 = strconv.Atoi(endStr); err2 != nil {
+			jsonError(w, http.StatusBadRequest, "end must be an integer")
+			return
+		}
+	case posStr != "":
+		pos, err := strconv.Atoi(posStr)
+		if err != nil {
+			jsonError(w, http.StatusBadRequest, "pos must be an integer")
+			return
+		}
+		start, end = pos, pos
+	default:
+		jsonError(w, http.StatusBadRequest, "provide pos or both start and end")
+		return
+	}
+	if start < 1 || end < 1 {
+		jsonError(w, http.StatusBadRequest, "coordinates must be positive")
 		return
 	}
 
@@ -318,7 +345,7 @@ func (s *Server) handleSpatialLookup(w http.ResponseWriter, r *http.Request) {
 	}
 	defer idx.Close()
 
-	result, err := transcript.SpatialLookupV2(idx, chr, posInt)
+	result, err := transcript.SpatialLookup(idx, chr, start, end)
 	if err != nil {
 		jsonError(w, http.StatusNotFound, err.Error())
 		return

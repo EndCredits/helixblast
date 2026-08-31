@@ -1,13 +1,5 @@
 #!/bin/bash
 # split_fasta.sh — Split a multi-FASTA genome into per-chromosome .fa.gz files
-#
-# Usage: ./split_fasta.sh <genome.fa> [output_dir]
-#
-# Output:
-#   output_dir/Chr01.fa.gz
-#   output_dir/Chr02.fa.gz
-#   ...
-
 set -euo pipefail
 
 GENOME="${1:?Usage: ./split_fasta.sh <genome.fa> [output_dir]}"
@@ -15,28 +7,40 @@ OUTDIR="${2:-split_chromosomes}"
 
 mkdir -p "$OUTDIR"
 
+echo "Splitting and compressing on the fly..."
+
+ulimit -n 4096 2>/dev/null || true
+
 awk -v outdir="$OUTDIR" '
 /^>/ {
-    if (file) close(file)
+    if (cmd) close(cmd)
+    
     header = substr($0, 2)
     split(header, parts, " ")
     chr = parts[1]
-    file = outdir "/" chr ".fa"
-    print $0 > file
+    
+    cmd = "gzip -c > " outdir "/" chr ".fa.gz"
+    
+    print $0 | cmd
     next
 }
-file {
-    print $0 > file
+cmd {
+    print $0 | cmd
+}
+END {
+    if (cmd) close(cmd)
 }
 ' "$GENOME"
 
-echo "Splitting complete. Compressing..."
-count=0
-for fa in "$OUTDIR"/*.fa; do
-    [ -f "$fa" ] || continue
-    gzip -f "$fa"
-    count=$((count + 1))
+echo "Done! Verifying..."
+corrupt=0
+for f in "$OUTDIR"/*.fa.gz; do
+  gzip -t "$f" || { echo "Corrupt: $f"; corrupt=1; }
 done
+if [ "$corrupt" -ne 0 ]; then
+  echo "Verification failed — some files are corrupt."
+  exit 1
+fi
 
-echo "Done: $count chromosome(s) written to $OUTDIR/"
-ls -lh "$OUTDIR"/
+count=$(ls "$OUTDIR"/*.fa.gz 2>/dev/null | wc -l | tr -d ' ')
+echo "All $count chromosomes OK in $OUTDIR/"

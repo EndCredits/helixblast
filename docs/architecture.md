@@ -130,12 +130,12 @@ The binary reader implements the `transcript.IndexReader` interface, which bridg
 | `LookupEntry(id)` | `(*Entry, bool)` | `LookupWithIndex` |
 | `LookupFamily(gene)` | `(*Family, bool)` | `LookupWithIndex` (gene family) |
 | `LookupCoords(id)` | `(*CoordRegions, bool)` | `LookupWithIndex` (exon/CDS coords) |
-| `Spatial(chr)` | `([]SpatialFeat, error)` | `SpatialLookupV2` |
+| `SpatialSearch(chr, start, end)` | `(*SpatialHits, error)` | `SpatialLookup` |
 | `FastaOffset(chr)` | `(int64, bool)` | `extractSequence` |
 | `FastaIndexMap()` | `map[string]int64` | `extractSequence` (bulk) |
 | `Close()` | `error` | Resource cleanup |
 
-`LoadIndexAuto` returns either a `*index.Reader` (binary) or a `*jsonIndexReader` (JSON), both implementing this interface. `LookupWithIndex` and `SpatialLookupV2` accept `IndexReader`, making them format‑agnostic.
+`LoadIndexAuto` returns either a `*index.Reader` (binary) or a `*jsonIndexReader` (JSON), both implementing this interface. `LookupWithIndex` and `SpatialLookup` accept `IndexReader`, making them format‑agnostic.
 
 ## Concurrency model
 
@@ -251,7 +251,7 @@ Cross-page flow is encoded in **URL search params** — no shared state store. C
 - Navigating from a BLAST hit to its transcript (`?db=&id=`) does **not** destroy the BLAST page context; going back restores the selected job instantly from IndexedDB via `?job=`.
 - Transcript lookups are bookmarkable/shareable URLs that survive refresh (the server-side SPA fallback serves the shell for any extensionless path).
 - Clicking gene-family members or spatial feature IDs rewrites params, so browser back/forward walks the lookup history.
-- **Spatial search is an auxiliary view of BLAST results, not a standalone page.** When a hit is selected and its database has `is_chromosome_db: true`, the BLAST page automatically resolves the HSP midpoint to overlapping features + flanking genes and renders them below the alignment (`SpatialPanel`). Feature IDs link into `/transcript?db=&id=`. It never appears for non-chromosome databases.
+- **Spatial search is an auxiliary view of BLAST results, not a standalone page.** When a hit is selected and its database has `is_chromosome_db: true`, the BLAST page automatically resolves the hit's full subject span (min/max across all HSPs, normalized for minus-strand) to overlapping features + flanking features and renders them below the alignment (`SpatialPanel`). Feature IDs link into `/transcript?db=&id=`. It never appears for non-chromosome databases.
 
 ### Serving & SPA fallback
 
@@ -361,7 +361,7 @@ The frontend previously merged a server‑side job list (`GET /api/v1/jobs`) wit
 
 ### Spatial search
 
-When a BLAST database uses chromosome sequences (`is_chromosome_db: true`), clicking a hit triggers `/api/v1/spatial` which queries a pre-built interval index in the GFF3 data. The index maps each chromosome to a sorted array of features (gene, mRNA, CDS, exon). Overlapping features and the nearest upstream/downstream genes are resolved in a single linear scan. Clicking any gene/transcript/CDS ID jumps to Transcript Lookup to view the full sequence.
+When a BLAST database uses chromosome sequences (`is_chromosome_db: true`), clicking a hit triggers `/api/v1/spatial` with the hit's subject range against a pre-built interval index in the GFF3 data. The index maps each chromosome to a start-sorted array of features (gene, mRNA, CDS, exon). `SpatialSearch` binary-searches the upper bound, then makes **one bounded backward pass** to collect overlapping features and the nearest upstream flank, with the downstream flank read directly at the boundary — O(log n + window) time, ~700 B and ~10 allocations per query regardless of chromosome size (vs the legacy whole-chromosome copy: O(n) time, ~90 B × features). The 8 Mb backward window assumes no gene exceeds that length (documented constant `spatialBackScan`). Only returned features get their ID/Type strings materialized from the string pool. Clicking any gene/transcript/CDS ID jumps to Transcript Lookup to view the full sequence.
 
 ### State management
 

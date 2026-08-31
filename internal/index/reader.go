@@ -220,23 +220,119 @@ type Region struct {
 	End   int
 }
 
-func (r *Reader) Spatial(chr string) ([]SpatialFeat, error) {
+// SpatialHits is the result of a windowed spatial query: every feature whose
+// span intersects [start,end] (full-length coordinates, never clipped), plus
+// the nearest feature entirely before start and the nearest entirely after
+// end.
+type SpatialHits struct {
+	Overlapping []SpatialFeat
+	Upstream    *SpatialFeat
+	Downstream  *SpatialFeat
+}
+
+// spatialBackScan bounds the leftward scan for the upstream flank: features
+// are sorted by Start, so the nearest-by-End feature before the window can
+// sit arbitrarily far left only if a gene longer than this margin ends just
+// before the window. 8 Mb exceeds any realistic plant/animal gene.
+const spatialBackScan = 8_000_000
+
+// SpatialSearch answers a range query [start,end] via binary search over the
+// start-sorted record array. Only records that are actually returned get
+// their ID/Type strings materialized, so cost is O(log n + k) and memory is
+// O(k) regardless of chromosome size.
+func (r *Reader) SpatialSearch(chr string, start, end int) (*SpatialHits, error) {
+	if start > end {
+		start, end = end, start
+	}
+	hdr, err := r.spatialHeader(chr)
+	if err != nil {
+		return nil, err
+	}
+	recs, err := r.spatialRecords(hdr)
+	if err != nil {
+		return nil, err
+	}
+	n := len(recs)
+
+	// upperBound: first index with Start > end
+	lo, hi := 0, n
+	for lo < hi {
+		mid := (lo + hi) / 2
+		if int(recs[mid].Start) <= end {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	ub := lo
+
+	// One bounded backward pass from ub-1 collects overlaps (End >= start)
+	// and finds the upstream flank (max End among End < start). Scanning
+	// left only until start - spatialBackScan assumes no gene exceeds that
+	// length; features starting earlier cannot reach the window.
+	out := &SpatialHits{Overlapping: make([]SpatialFeat, 0, 8)}
+	bestEnd, bestIdx := -1, -1
+	limit := start - spatialBackScan
+	for i := ub - 1; i >= 0; i-- {
+		if int(recs[i].Start) < limit {
+			break
+		}
+		switch {
+		case int(recs[i].End) >= start:
+			out.Overlapping = append(out.Overlapping, r.spatialFeat(recs[i]))
+		case int(recs[i].End) >= bestEnd:
+			bestEnd, bestIdx = int(recs[i].End), i
+		}
+	}
+	// restore ascending-Start order (naive reference parity)
+	for i, j := 0, len(out.Overlapping)-1; i < j; i, j = i+1, j-1 {
+		out.Overlapping[i], out.Overlapping[j] = out.Overlapping[j], out.Overlapping[i]
+	}
+	if bestIdx >= 0 {
+		f := r.spatialFeat(recs[bestIdx])
+		out.Upstream = &f
+	}
+	// Downstream: first record with Start > end.
+	if ub < n {
+		f := r.spatialFeat(recs[ub])
+		out.Downstream = &f
+	}
+	return out, nil
+}
+
+func (r *Reader) spatialHeader(chr string) (*SpatialHeader, error) {
 	off := r.hdr.SpatialOffset
+	if int(off)+4 > len(r.data) {
+		return nil, fmt.Errorf("spatial section out of bounds")
+	}
 	n := r.u32At(off)
 	off += 4
+	if int(off)+int(n)*SpatialHeaderSize > len(r.data) {
+		return nil, fmt.Errorf("spatial header table out of bounds")
+	}
 	for i := uint32(0); i < n; i++ {
 		h := (*SpatialHeader)(unsafe.Pointer(&r.data[off]))
 		if r.stringAt(h.ChrOffset) == chr {
-			recs := unsafe.Slice((*SpatialFeatureRec)(unsafe.Pointer(&r.data[h.DataOffset])), h.FeatureCount)
-			out := make([]SpatialFeat, h.FeatureCount)
-			for j, rec := range recs {
-				out[j] = SpatialFeat{Start: int(rec.Start), End: int(rec.End), ID: r.stringAt(rec.IDOffset), Type: r.stringAt(rec.TypeOffset)}
-			}
-			return out, nil
+			return h, nil
 		}
 		off += SpatialHeaderSize
 	}
 	return nil, fmt.Errorf("chromosome %s not found in spatial index", chr)
+}
+
+func (r *Reader) spatialRecords(h *SpatialHeader) ([]SpatialFeatureRec, error) {
+	count := int(h.FeatureCount)
+	if h.DataOffset > uint64(len(r.data)) || int(h.DataOffset)+count*SpatialFeatureRecSize > len(r.data) {
+		return nil, fmt.Errorf("spatial feature data out of bounds for chromosome")
+	}
+	if count == 0 {
+		return nil, nil
+	}
+	return unsafe.Slice((*SpatialFeatureRec)(unsafe.Pointer(&r.data[h.DataOffset])), count), nil
+}
+
+func (r *Reader) spatialFeat(rec SpatialFeatureRec) SpatialFeat {
+	return SpatialFeat{Start: int(rec.Start), End: int(rec.End), ID: r.stringAt(rec.IDOffset), Type: r.stringAt(rec.TypeOffset)}
 }
 
 type SpatialFeat struct {

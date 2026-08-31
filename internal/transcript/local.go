@@ -49,44 +49,11 @@ type SpatialFeature struct {
 
 type SpatialResult struct {
 	Chromosome string           `json:"chromosome"`
-	Position   int              `json:"position"`
+	Start      int              `json:"start"`
+	End        int              `json:"end"`
 	Features   []SpatialFeature `json:"features"`
 	Upstream   *SpatialFeature  `json:"upstream,omitempty"`
 	Downstream *SpatialFeature  `json:"downstream,omitempty"`
-}
-
-func SpatialLookup(gffData *GFF3Data, chr string, pos int) (*SpatialResult, error) {
-	features, ok := gffData.Spatial[chr]
-	if !ok {
-		return nil, fmt.Errorf("chromosome %s not found in spatial index", chr)
-	}
-
-	overlapping := make([]SpatialFeature, 0)
-	var upstream, downstream *SpatialFeature
-
-	for i := range features {
-		f := features[i]
-		if f.Start <= pos && pos <= f.End {
-			overlapping = append(overlapping, f)
-		}
-		if f.End < pos {
-			c := f
-			upstream = &c
-		}
-		if f.Start > pos && downstream == nil {
-			c := f
-			downstream = &c
-			break
-		}
-	}
-
-	return &SpatialResult{
-		Chromosome: chr,
-		Position:   pos,
-		Features:   overlapping,
-		Upstream:   upstream,
-		Downstream: downstream,
-	}, nil
 }
 
 type GFF3Coords map[string]TranscriptRegions
