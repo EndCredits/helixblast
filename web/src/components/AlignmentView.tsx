@@ -1,10 +1,10 @@
 import { useMemo, useCallback } from 'react'
-import { Typography, Space, Empty, Button, Divider } from 'antd'
+import { Typography, Space, Empty, Button, Divider, theme } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { DownloadOutlined, SearchOutlined } from '@ant-design/icons'
 import type { Hit } from '../api/client'
 import SequenceText from '../lib/sequenceColor'
-import { codePanelStyle, ink, inkMuted, gapColor } from '../theme'
+import { useCodePanelStyle } from '../themeMode'
 
 const { Text } = Typography
 
@@ -111,6 +111,8 @@ function buildFASTA(hit: Hit): string {
 
 export default function AlignmentView({ hit, onLookupTranscript }: Props) {
   const { t } = useTranslation()
+  const { token } = theme.useToken()
+  const codePanel = useCodePanelStyle()
   const blocks = useMemo(() => {
     if (!hit) return []
     return buildWrappedAlignment(hit)
@@ -151,14 +153,14 @@ export default function AlignmentView({ hit, onLookupTranscript }: Props) {
       </Space>
       <div
         style={{
-          ...codePanelStyle,
+          ...codePanel,
           padding: 12,
           overflowX: 'auto',
           maxHeight: 400,
           overflowY: 'auto',
           fontSize: 12,
           lineHeight: '16px',
-          color: ink,
+          color: token.colorText,
         }}
       >
         {blocks.map((block, idx) => (
@@ -188,16 +190,16 @@ export default function AlignmentView({ hit, onLookupTranscript }: Props) {
                   const prefix = ' '.repeat(labelWidth)
                   return (
                     <>
-                      <span style={{ color: inkMuted }}>
+                      <span style={{ color: token.colorTextTertiary }}>
                         {'Query '}{qPos.padStart(maxPosLen)}{' '}
                       </span>
                       <SequenceText seq={qLine} />
                       {'\n'}
-                      <span style={{ color: gapColor }}>
+                      <span style={{ color: token.colorTextQuaternary }}>
                         {prefix}{' '.repeat(maxPosLen)}{' '}{block.matchLines[lineIdx]}
                       </span>
                       {'\n'}
-                      <span style={{ color: inkMuted }}>
+                      <span style={{ color: token.colorTextTertiary }}>
                         {'Sbjct '}{sPos.padStart(maxPosLen)}{' '}
                       </span>
                       <SequenceText seq={block.subjectLines[lineIdx]} />

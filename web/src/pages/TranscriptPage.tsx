@@ -20,7 +20,7 @@ import { useDatabases } from '../hooks/useJobs'
 import type { TranscriptResult } from '../api/client'
 import { lookupTranscript } from '../api/client'
 import SequenceText from '../lib/sequenceColor'
-import { codePanelStyle } from '../theme'
+import { useCodePanelStyle } from '../themeMode'
 
 const { Title, Text } = Typography
 
@@ -29,6 +29,7 @@ export default function TranscriptPage() {
   const { t } = useTranslation()
   const [searchParams, setSearchParams] = useSearchParams()
   const { data: databases = [] } = useDatabases()
+  const codePanel = useCodePanelStyle()
 
   const dbParam = searchParams.get('db') || ''
   const idParam = searchParams.get('id') || ''
@@ -218,7 +219,7 @@ export default function TranscriptPage() {
                       >
                         <pre
                           style={{
-                            ...codePanelStyle,
+                            ...codePanel,
                             fontSize: 11,
                             lineHeight: '16px',
                             whiteSpace: 'pre-wrap',

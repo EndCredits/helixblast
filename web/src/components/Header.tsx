@@ -1,38 +1,20 @@
-import { Layout, Typography, Button, Dropdown, Space, Segmented, Grid } from 'antd'
-import { GlobalOutlined } from '@ant-design/icons'
+import { Layout, Typography, Button, Dropdown, Space, Segmented, Grid, Tooltip, theme } from 'antd'
+import { GlobalOutlined, SunOutlined, MoonOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useHealth } from '../hooks/useJobs'
 import { LANGUAGES, saveLang } from '../i18n'
-import {
-  brand,
-  ink,
-  inkMuted,
-  dividerColor,
-  successColor,
-  warningColor,
-} from '../theme'
+import { useThemeMode } from '../themeMode'
 
 const { Header: AntHeader } = Layout
 const { Text } = Typography
 
-function HelixMark() {
+function HelixMark({ color }: { color: string }) {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M8.5 2.5c0 4.5 7 4.5 7 9.5s-7 5-7 9.5"
-        stroke={brand}
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-      <path
-        d="M15.5 2.5c0 4.5-7 4.5-7 9.5s7 5 7 9.5"
-        stroke={brand}
-        strokeOpacity="0.45"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-      <path d="M9.8 4.8h4.4M9.8 19.2h4.4" stroke={brand} strokeOpacity="0.7" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M8.5 2.5c0 4.5 7 4.5 7 9.5s-7 5-7 9.5" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M15.5 2.5c0 4.5-7 4.5-7 9.5s7 5 7 9.5" stroke={color} strokeOpacity="0.45" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M9.8 4.8h4.4M9.8 19.2h4.4" stroke={color} strokeOpacity="0.7" strokeWidth="1.4" strokeLinecap="round" />
     </svg>
   )
 }
@@ -43,6 +25,8 @@ export default function Header() {
   const location = useLocation()
   const navigate = useNavigate()
   const screens = Grid.useBreakpoint()
+  const { token } = theme.useToken()
+  const { resolved, toggle } = useThemeMode()
 
   const isSettings = location.pathname === '/settings'
   const isTranscript = location.pathname.startsWith('/transcript')
@@ -56,7 +40,7 @@ export default function Header() {
         position: 'sticky',
         top: 0,
         zIndex: 20,
-        borderBottom: `1px solid ${dividerColor}`,
+        borderBottom: `1px solid ${token.colorBorderSecondary}`,
         lineHeight: 'normal',
       }}
     >
@@ -72,8 +56,8 @@ export default function Header() {
         }}
       >
         <Link to="/blast" style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-          <HelixMark />
-          <span style={{ fontSize: 16, fontWeight: 600, color: ink, letterSpacing: -0.2 }}>
+          <HelixMark color={token.colorPrimary} />
+          <span style={{ fontSize: 16, fontWeight: 600, color: token.colorText, letterSpacing: -0.2 }}>
             {t('common.appName')}
           </span>
         </Link>
@@ -97,12 +81,12 @@ export default function Header() {
                   width: 8,
                   height: 8,
                   borderRadius: '50%',
-                  background: healthy ? successColor : warningColor,
+                  background: healthy ? token.colorSuccess : token.colorWarning,
                   display: 'inline-block',
                   flexShrink: 0,
                 }}
               />
-              <Text style={{ fontSize: 12, color: inkMuted, whiteSpace: 'nowrap' }}>
+              <Text style={{ fontSize: 12, color: token.colorTextTertiary, whiteSpace: 'nowrap' }}>
                 {healthy ? t('common.healthy') : t('common.degraded')}
                 {screens.lg &&
                   ` · ${t('header.statusLine', {
@@ -113,6 +97,15 @@ export default function Header() {
               </Text>
             </Space>
           )}
+          <Tooltip title={t('settings.theme.toggle')}>
+            <Button
+              size="small"
+              type="text"
+              aria-label={t('settings.theme.toggle')}
+              icon={resolved === 'dark' ? <SunOutlined /> : <MoonOutlined />}
+              onClick={toggle}
+            />
+          </Tooltip>
           <Dropdown
             menu={{
               items: LANGUAGES.map((l) => ({

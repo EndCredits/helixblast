@@ -1,8 +1,7 @@
-import { Card, Tag, Button, Typography, Space, Progress } from 'antd'
+import { Card, Tag, Button, Typography, Space, Progress, theme } from 'antd'
 import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, SyncOutlined, MinusCircleOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import type { JobItem } from '../api/client'
-import { brand } from '../theme'
 
 const { Text } = Typography
 
@@ -24,6 +23,7 @@ const statusMeta: Record<string, { color: string; icon: React.ReactNode }> = {
 
 export default function JobCard({ job, onSelect, onCancel, selected }: Props) {
   const { t } = useTranslation()
+  const { token } = theme.useToken()
   const meta = statusMeta[job.status] || statusMeta.pending
   const isRunning = job.status === 'running'
 
@@ -33,7 +33,7 @@ export default function JobCard({ job, onSelect, onCancel, selected }: Props) {
       hoverable
       onClick={() => onSelect(job.job_id)}
       style={{
-        border: selected ? `1.5px solid ${brand}` : undefined,
+        border: selected ? `1.5px solid ${token.colorPrimary}` : undefined,
         opacity: job.status === 'cancelled' ? 0.6 : 1,
       }}
     >

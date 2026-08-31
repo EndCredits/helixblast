@@ -275,14 +275,24 @@ Why this shape:
 
 ### Design system (Bio Minimal)
 
-All visual decisions live in `web/src/theme.ts` as Ant Design v6 design tokens — no ad-hoc hex values scattered through components. The theme follows Ant Design's "flat-first" language: surfaces carry hierarchy via borders and tonal contrast, not heavy shadows.
+All visual decisions live in `web/src/theme.ts` + `web/src/themeMode.tsx` as Ant Design v6 design tokens — no ad-hoc hex values scattered through components. The theme follows Ant Design's "flat-first" language: surfaces carry hierarchy via borders and tonal contrast, not heavy shadows.
 
-- **Brand seed**: a single teal (`#0e7490`) drives `colorPrimary`/`colorInfo`/`colorLink`; AntD's algorithm derives all hover/active/tint steps from it. Status seeds are `#059669` / `#d97706` / `#dc2626`.
-- **Neutrals**: slate scale (`#0f172a` ink → `#f1f5f9` layout). Text uses AntD's alpha ramp via `colorTextBase`.
+- **Brand seed**: teal drives `colorPrimary`/`colorInfo`/`colorLink` — `#0e7490` (light) / `#2dd4bf` (dark, brightened for contrast on the midnight surface); AntD's algorithm derives all hover/active/tint steps. Status seeds brighten in dark (`#059669`→`#10b981`, etc.).
+- **Neutrals**: derived by AntD's `defaultAlgorithm`/`darkAlgorithm`, consumed in components via `theme.useToken()` (`colorText*`, `colorBorder*`, `colorFillQuaternary`, `colorPrimary`) so they flip automatically. The dark theme sets `colorBgBase=#0b1220` (deep slate, not pure black) and `colorTextBase=#e5e7eb` (soft white).
 - **Radius / type**: base radius 8 (cards 12), Google Sans Flex + Noto Sans SC for UI, Fira Code for all sequence/code surfaces (`fontFamilyCode` seed).
-- **Nucleotide colors** (`nucleotideColors`): IGV-style categorical palette — A green, C blue, G amber, T red, U pink, gaps slate. Reserved for **data only** (alignments, region FASTA), never UI chrome.
-- **`SequenceText`** (`web/src/lib/sequenceColor.tsx`): color-codes a sequence string only when it matches the nucleotide alphabet and is under 5 000 bp; protein/ambiguous/long sequences render as plain ink. Consecutive same-color runs are merged into one `<span>` to bound DOM size.
+- **Nucleotide colors** (`getNucleotideColors(mode)`): IGV-style categorical palette — A green, C blue, G amber, T red, U pink, gaps slate — with a **brightened dark variant** to keep ≥4.5:1 on dark surfaces. Reserved for **data only** (alignments, region FASTA), never UI chrome.
+- **`SequenceText`** (`web/src/lib/sequenceColor.tsx`): color-codes a sequence string only when it matches the nucleotide alphabet and is under 5 000 bp; protein/ambiguous/long sequences render as plain text. Consecutive same-color runs are merged into one `<span>` to bound DOM size. Reads the active palette via the `useNucleotideColors()` hook.
 - **No emoji as icons**: the brand mark is an inline SVG double helix (header + favicon).
+
+### Dark mode
+
+Preference model is `system | light | dark` (default `system`), managed by `ThemeModeProvider` (`web/src/themeMode.tsx`):
+
+- **Storage**: `localStorage` key `helixblast_theme` (mirrors the language-preference pattern — a visual setting needed before paint).
+- **No FOUC**: a tiny inline script in `index.html` resolves the stored preference against `prefers-color-scheme` and sets `data-theme` + `color-scheme` + root background before React mounts.
+- **Live system tracking**: when preference is `system`, a `matchMedia` listener flips the resolved mode when the OS theme changes.
+- **Single algorithm switch**: `getThemeConfig(resolved)` swaps `defaultAlgorithm`↔`darkAlgorithm`; because every neutral is read through `theme.useToken()`, all surfaces/text/borders flip with zero per-component branching. Only brand + nucleotide palettes are explicitly mode-keyed.
+- **Entry points**: a sun/moon toggle button in the header (switches to the explicit opposite of the current resolved mode) and a System/Light/Dark `Segmented` control in Settings → Appearance.
 
 ### IndexedDB‑first data flow
 

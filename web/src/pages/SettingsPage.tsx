@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react'
-import { Card, Typography, Space, Select, Button, Switch } from 'antd'
+import { Card, Typography, Space, Select, Button, Switch, Segmented } from 'antd'
 import { App as AntApp } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { LANGUAGES, saveLang } from '../i18n'
 import { getSetting, setSetting, loadJobs, cacheClear } from '../lib/db'
+import { useThemeMode, type ThemePreference } from '../themeMode'
 
 const { Title, Text } = Typography
 
 export default function SettingsPage() {
   const { t, i18n } = useTranslation()
   const { message: msg } = AntApp.useApp()
+  const { preference, setPreference } = useThemeMode()
 
   // Local-only states; values are read/written to IndexedDB on demand.
   // Low Resource prompt: dismissedLowResource === true means the prompt was
@@ -63,6 +65,21 @@ export default function SettingsPage() {
                   i18n.changeLanguage(lang)
                 }
               }}
+            />
+          </Space>
+        </Card>
+
+        <Card title={t('settings.theme.title')}>
+          <Space orientation="vertical" style={{ width: '100%' }}>
+            <Text type="secondary">{t('settings.theme.desc')}</Text>
+            <Segmented
+              value={preference}
+              onChange={(v) => setPreference(v as ThemePreference)}
+              options={[
+                { label: t('settings.theme.system'), value: 'system' },
+                { label: t('settings.theme.light'), value: 'light' },
+                { label: t('settings.theme.dark'), value: 'dark' },
+              ]}
             />
           </Space>
         </Card>

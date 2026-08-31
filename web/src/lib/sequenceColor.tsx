@@ -1,16 +1,8 @@
 import type { ReactNode } from 'react'
-import { nucleotideColors, gapColor, ambiguousColor } from '../theme'
+import { useNucleotideColors } from '../themeMode'
 
 const NUCLEOTIDE_ALPHABET = /^[ACGTUNRYKMSWBHDV.\-*\s]+$/i
 const MAX_COLORED_LENGTH = 5000
-
-function colorForChar(ch: string): string | null {
-  if (ch === '-' || ch === '.') return gapColor
-  if (/\s/.test(ch)) return null
-  const upper = ch.toUpperCase()
-  if (upper in nucleotideColors) return nucleotideColors[upper]
-  return ambiguousColor
-}
 
 export function isNucleotideSequence(seq: string): boolean {
   const content = seq.replace(/\s/g, '')
@@ -22,7 +14,17 @@ export function isNucleotideSequence(seq: string): boolean {
 }
 
 export default function SequenceText({ seq }: { seq: string }) {
+  const { colors, gap, ambiguous } = useNucleotideColors()
+
   if (!isNucleotideSequence(seq)) return <>{seq}</>
+
+  const colorForChar = (ch: string): string | null => {
+    if (ch === '-' || ch === '.') return gap
+    if (/\s/.test(ch)) return null
+    const upper = ch.toUpperCase()
+    if (upper in colors) return colors[upper]
+    return ambiguous
+  }
 
   const nodes: ReactNode[] = []
   let run = ''

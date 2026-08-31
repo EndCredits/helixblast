@@ -11,6 +11,24 @@
       rel="stylesheet"
     />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M8.5 2.5c0 4.5 7 4.5 7 9.5s-7 5-7 9.5' stroke='%230e7490' stroke-width='1.8' stroke-linecap='round'/%3E%3Cpath d='M15.5 2.5c0 4.5-7 4.5-7 9.5s7 5 7 9.5' stroke='%230e7490' stroke-opacity='.45' stroke-width='1.8' stroke-linecap='round'/%3E%3Cpath d='M9.8 4.8h4.4M9.8 19.2h4.4' stroke='%230e7490' stroke-opacity='.7' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E" />
+    <style>
+      html { background: #f1f5f9; }
+      html[data-theme='dark'] { background: #0b1220; }
+    </style>
+    <script>
+      // Resolve theme before first paint to avoid a flash of the wrong theme.
+      (function () {
+        try {
+          var pref = localStorage.getItem('helixblast_theme');
+          if (pref !== 'light' && pref !== 'dark') pref = 'system';
+          var dark = pref === 'dark' ||
+            (pref === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var root = document.documentElement;
+          root.dataset.theme = dark ? 'dark' : 'light';
+          root.style.colorScheme = dark ? 'dark' : 'light';
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

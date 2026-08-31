@@ -147,6 +147,14 @@
       "note": "Clears jobs only. Settings are kept.",
       "cleared": "Local cache cleared",
       "clearFailed": "Failed to clear cache"
+    },
+    "theme": {
+      "title": "Appearance",
+      "desc": "Choose the color theme. System follows your OS preference.",
+      "system": "System",
+      "light": "Light",
+      "dark": "Dark",
+      "toggle": "Toggle theme"
     }
   }
 }
