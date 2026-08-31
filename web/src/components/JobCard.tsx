@@ -2,6 +2,7 @@ import { Card, Tag, Button, Typography, Space, Progress } from 'antd'
 import { ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, SyncOutlined, MinusCircleOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import type { JobItem } from '../api/client'
+import { brand } from '../theme'
 
 const { Text } = Typography
 
@@ -32,7 +33,7 @@ export default function JobCard({ job, onSelect, onCancel, selected }: Props) {
       hoverable
       onClick={() => onSelect(job.job_id)}
       style={{
-        border: selected ? '2px solid #0e7490' : undefined,
+        border: selected ? `1.5px solid ${brand}` : undefined,
         opacity: job.status === 'cancelled' ? 0.6 : 1,
       }}
     >

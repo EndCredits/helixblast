@@ -1,6 +1,7 @@
 import { Form, Select, Collapse, Input, Button, Space, Tag } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { Database } from '../api/client'
+import { MONO_STACK } from '../theme'
 
 interface Props {
   databases: Database[]
@@ -122,7 +123,7 @@ export default function ParamPanel({
             style={{ width: '100%' }}
             optionRender={(option) => (
               <Space>
-                <span style={{ fontFamily: "'Fira Code', monospace", fontWeight: 600 }}>
+                <span style={{ fontFamily: MONO_STACK, fontWeight: 600 }}>
                   {option.data.label}
                 </span>
                 <span style={{ color: '#888', fontSize: 12 }}>
@@ -145,7 +146,7 @@ export default function ParamPanel({
                   value={advancedParams}
                   onChange={(e) => onAdvancedParamsChange(e.target.value)}
                   placeholder="-word_size 11 -evalue 1e-5 -max_target_seqs 500"
-                  style={{ fontFamily: "'Fira Code', monospace", fontSize: 13 }}
+                  style={{ fontFamily: MONO_STACK, fontSize: 13 }}
                 />
               ),
             },

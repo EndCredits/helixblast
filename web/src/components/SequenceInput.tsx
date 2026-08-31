@@ -1,5 +1,6 @@
 import { Input, Alert, Space } from 'antd'
 import { useTranslation } from 'react-i18next'
+import { MONO_STACK } from '../theme'
 
 const { TextArea } = Input
 
@@ -18,7 +19,7 @@ export default function SequenceInput({ value, onChange, error }: Props) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={'>seq1 Description\nATGCGTACGTAGCTAGCTAGCTAGC\n>seq2 Description\nATGCGTACGTAGCTAGCTAGCTAGC'}
-        style={{ fontFamily: "'Fira Code', monospace", fontSize: 13 }}
+        style={{ fontFamily: MONO_STACK, fontSize: 13 }}
       />
       {error && <Alert title={error} type="error" showIcon />}
       {value && !error && (

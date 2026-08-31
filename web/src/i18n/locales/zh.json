@@ -6,6 +6,11 @@
     "workers": "{{count}} 个工作线程",
     "version": "v{{version}}"
   },
+  "nav": {
+    "blast": "BLAST",
+    "transcript": "转录本",
+    "settings": "设置"
+  },
   "header": {
     "statusLine": "v{{version}} | {{workers}} | {{storage}}"
   },

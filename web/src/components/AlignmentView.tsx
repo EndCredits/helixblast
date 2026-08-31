@@ -3,6 +3,8 @@ import { Typography, Space, Empty, Button, Divider } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { DownloadOutlined, SearchOutlined, EnvironmentOutlined } from '@ant-design/icons'
 import type { Hit } from '../api/client'
+import SequenceText from '../lib/sequenceColor'
+import { codePanelStyle, ink, inkMuted, gapColor } from '../theme'
 
 const { Text } = Typography
 
@@ -158,15 +160,14 @@ export default function AlignmentView({ hit, onLookupTranscript, onLookupRegion 
       </Space>
       <div
         style={{
-          background: '#f0f7f9',
-          borderRadius: 6,
+          ...codePanelStyle,
           padding: 12,
           overflowX: 'auto',
           maxHeight: 400,
           overflowY: 'auto',
-          fontFamily: "'Fira Code', 'Courier New', monospace",
           fontSize: 12,
           lineHeight: '16px',
+          color: ink,
         }}
       >
         {blocks.map((block, idx) => (
@@ -196,17 +197,19 @@ export default function AlignmentView({ hit, onLookupTranscript, onLookupRegion 
                   const prefix = ' '.repeat(labelWidth)
                   return (
                     <>
-                      <span style={{ color: '#0e7490' }}>
-                        {'Query '}{qPos.padStart(maxPosLen)}{' '}{qLine}
+                      <span style={{ color: inkMuted }}>
+                        {'Query '}{qPos.padStart(maxPosLen)}{' '}
                       </span>
+                      <SequenceText seq={qLine} />
                       {'\n'}
-                      <span style={{ color: '#52c41a' }}>
+                      <span style={{ color: gapColor }}>
                         {prefix}{' '.repeat(maxPosLen)}{' '}{block.matchLines[lineIdx]}
                       </span>
                       {'\n'}
-                      <span style={{ color: '#fa541c' }}>
-                        {'Sbjct '}{sPos.padStart(maxPosLen)}{' '}{block.subjectLines[lineIdx]}
+                      <span style={{ color: inkMuted }}>
+                        {'Sbjct '}{sPos.padStart(maxPosLen)}{' '}
                       </span>
+                      <SequenceText seq={block.subjectLines[lineIdx]} />
                     </>
                   )
                 })()}

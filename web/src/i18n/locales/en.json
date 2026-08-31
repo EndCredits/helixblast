@@ -6,6 +6,11 @@
     "workers": "{{count}} workers",
     "version": "v{{version}}"
   },
+  "nav": {
+    "blast": "BLAST",
+    "transcript": "Transcript",
+    "settings": "Settings"
+  },
   "header": {
     "statusLine": "v{{version}} | {{workers}} | {{storage}}"
   },

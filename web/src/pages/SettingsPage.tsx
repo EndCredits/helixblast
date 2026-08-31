@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { Card, Typography, Space, Select, Button, Switch } from 'antd'
 import { App as AntApp } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router-dom'
 import { LANGUAGES, saveLang } from '../i18n'
 import { getSetting, setSetting, loadJobs, cacheClear } from '../lib/db'
 
@@ -10,7 +9,6 @@ const { Title, Text } = Typography
 
 export default function SettingsPage() {
   const { t, i18n } = useTranslation()
-  const navigate = useNavigate()
   const { message: msg } = AntApp.useApp()
 
   // Local-only states; values are read/written to IndexedDB on demand.
@@ -48,12 +46,9 @@ export default function SettingsPage() {
   }
 
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: 24 }}>
+    <div style={{ maxWidth: 720, margin: '0 auto', padding: '24px 0' }}>
       <Space orientation="vertical" style={{ width: '100%' }} size="middle">
-        <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-          <Title level={4} style={{ margin: 0 }}>{t('settings.title')}</Title>
-          <Button onClick={() => navigate('/')}>{t('settings.back')}</Button>
-        </Space>
+        <Title level={4} style={{ margin: 0 }}>{t('settings.title')}</Title>
 
         <Card title={t('settings.language.title')}>
           <Space orientation="vertical" style={{ width: '100%' }}>

@@ -224,9 +224,28 @@ Graceful shutdown on SIGINT/SIGTERM:
 
 ## Frontend
 
+### Routes & cross-page data flow
+
+Layout route (`AppLayout`: header, degraded banner, `<Outlet/>`) hosts three pages:
+
+| Path | Page | URL params |
+|---|---|---|
+| `/` | → redirect to `/blast` | — |
+| `/blast` | BLAST search: input panel, job list, results/alignment | `?job=<id>` — selected job |
+| `/transcript` | Transcript lookup + spatial browsing (single-db) | `?db=<name>&id=<tx>` or `?db=<name>&chr=<chr>&pos=<n>` |
+| `/settings` | Language / notifications / cache | — |
+| anything else | → redirect to `/blast` | — |
+
+Cross-page flow is encoded in **URL search params** — no shared state store. Consequences:
+
+- Navigating from a BLAST hit to its transcript (`?db=&id=`) does **not** destroy the BLAST page context; going back restores the selected job instantly from IndexedDB via `?job=`.
+- Transcript lookups and spatial regions are bookmarkable/shareable URLs that survive refresh (the server-side SPA fallback serves the shell for any extensionless path).
+- Clicking gene-family members or spatial features on `/transcript` just rewrites params, so browser back/forward walks the lookup history.
+- Spatial search lives entirely on `/transcript`; the BLAST page's "lookup region" button navigates there with `db/chr/pos`.
+
 ### Serving & SPA fallback
 
-Client-side routes (react-router `BrowserRouter`): `/`, `/settings`, wildcard → home. Server side, API routes (`/api/v1/*`, `/health`) are registered **before** the static catch-all and never reach it.
+API routes (`/api/v1/*`, `/health`) are registered **before** the static catch-all and never reach it.
 
 The catch-all (`serveFrontend` in `internal/api`) implements a self-maintaining fallback — deliberately **no hand-written exclusion list**:
 
@@ -249,10 +268,21 @@ Why this shape:
 |-----------|---------|-----|
 | Framework | React 18 | Declarative UI, mature ecosystem |
 | Build | Vite 6 | ESM-native, fast HMR, tree-shaking |
-| UI | Ant Design 5 | Mature component library, form/table/tag/card |
+| UI | Ant Design 6 | Mature component library, form/table/tag/card |
 | Data fetching | @tanstack/react-query | Cache dedup, background GC, SSE + IndexedDB for jobs |
 | State push | EventSource (SSE) | Server-push for job status, auto-reconnect |
 | Client storage | IndexedDB | Browser-local persistence (24h TTL), survives restarts |
+
+### Design system (Bio Minimal)
+
+All visual decisions live in `web/src/theme.ts` as Ant Design v6 design tokens — no ad-hoc hex values scattered through components. The theme follows Ant Design's "flat-first" language: surfaces carry hierarchy via borders and tonal contrast, not heavy shadows.
+
+- **Brand seed**: a single teal (`#0e7490`) drives `colorPrimary`/`colorInfo`/`colorLink`; AntD's algorithm derives all hover/active/tint steps from it. Status seeds are `#059669` / `#d97706` / `#dc2626`.
+- **Neutrals**: slate scale (`#0f172a` ink → `#f1f5f9` layout). Text uses AntD's alpha ramp via `colorTextBase`.
+- **Radius / type**: base radius 8 (cards 12), Google Sans Flex + Noto Sans SC for UI, Fira Code for all sequence/code surfaces (`fontFamilyCode` seed).
+- **Nucleotide colors** (`nucleotideColors`): IGV-style categorical palette — A green, C blue, G amber, T red, U pink, gaps slate. Reserved for **data only** (alignments, region FASTA), never UI chrome.
+- **`SequenceText`** (`web/src/lib/sequenceColor.tsx`): color-codes a sequence string only when it matches the nucleotide alphabet and is under 5 000 bp; protein/ambiguous/long sequences render as plain ink. Consecutive same-color runs are merged into one `<span>` to bound DOM size.
+- **No emoji as icons**: the brand mark is an inline SVG double helix (header + favicon).
 
 ### IndexedDB‑first data flow
 
