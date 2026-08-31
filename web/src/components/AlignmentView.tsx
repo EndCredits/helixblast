@@ -1,7 +1,7 @@
 import { useMemo, useCallback } from 'react'
 import { Typography, Space, Empty, Button, Divider } from 'antd'
 import { useTranslation } from 'react-i18next'
-import { DownloadOutlined, SearchOutlined, EnvironmentOutlined } from '@ant-design/icons'
+import { DownloadOutlined, SearchOutlined } from '@ant-design/icons'
 import type { Hit } from '../api/client'
 import SequenceText from '../lib/sequenceColor'
 import { codePanelStyle, ink, inkMuted, gapColor } from '../theme'
@@ -13,7 +13,6 @@ const LINE_LEN = 60
 interface Props {
   hit: Hit | null
   onLookupTranscript?: (id: string) => void
-  onLookupRegion?: (chr: string, pos: number) => void
 }
 
 interface AlignmentBlock {
@@ -110,7 +109,7 @@ function buildFASTA(hit: Hit): string {
   return lines.join('\n')
 }
 
-export default function AlignmentView({ hit, onLookupTranscript, onLookupRegion }: Props) {
+export default function AlignmentView({ hit, onLookupTranscript }: Props) {
   const { t } = useTranslation()
   const blocks = useMemo(() => {
     if (!hit) return []
@@ -143,14 +142,6 @@ export default function AlignmentView({ hit, onLookupTranscript, onLookupRegion 
           {onLookupTranscript && (
             <Button size="small" icon={<SearchOutlined />} onClick={() => onLookupTranscript(hit.subject_id)}>
               {t('home.results.lookupTranscript')}
-            </Button>
-          )}
-          {onLookupRegion && hit.alignments.length > 0 && (
-            <Button size="small" icon={<EnvironmentOutlined />} onClick={() => {
-              const pos = Math.floor((hit.alignments[0].subject_start + hit.alignments[0].subject_end) / 2)
-              onLookupRegion(hit.subject_id, pos)
-            }}>
-              {t('home.results.lookupRegion')}
             </Button>
           )}
           <Button size="small" icon={<DownloadOutlined />} onClick={handleExportFASTA}>

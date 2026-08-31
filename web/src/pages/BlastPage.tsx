@@ -21,7 +21,9 @@ import ParamPanel from '../components/ParamPanel'
 import JobCard from '../components/JobCard'
 import ResultsTable from '../components/ResultsTable'
 import AlignmentView from '../components/AlignmentView'
-import type { Hit, BlastResult, JobItem } from '../api/client'
+import SpatialPanel from '../components/SpatialPanel'
+import type { Hit, BlastResult, JobItem, SpatialResult } from '../api/client'
+import { fetchSpatial } from '../api/client'
 import { loadJobs, saveJobMeta, cacheClear } from '../lib/db'
 import i18n from '../i18n'
 
@@ -54,6 +56,9 @@ export default function BlastPage() {
   const [selectedHit, setSelectedHit] = useState<Hit | null>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
   const alignmentRef = useRef<HTMLDivElement>(null)
+  const spatialRef = useRef<HTMLDivElement>(null)
+  const [spatialResult, setSpatialResult] = useState<SpatialResult | null>(null)
+  const [spatialLoading, setSpatialLoading] = useState(false)
   const [savedJobs, setSavedJobs] = useState<JobItem[]>([])
 
   const selectedJobId = searchParams.get('job')
@@ -119,14 +124,45 @@ export default function BlastPage() {
     navigate(`/transcript?db=${encodeURIComponent(db)}&id=${encodeURIComponent(id)}`)
   }, [resolveHitDb, navigate, message, t])
 
-  const handleLookupRegion = useCallback((chr: string, pos: number) => {
-    const db = resolveHitDb()
-    if (!db) {
-      message.error(t('home.errors.dbNotAvailable'))
+  const currentDB = useMemo(
+    () => databases.find((d) => d.name === (selectedHit?.database || (database.length === 1 ? database[0] : ''))),
+    [databases, selectedHit?.database, database],
+  )
+
+  // Spatial search is an auxiliary view of BLAST results: whenever a hit on a
+  // chromosome database (is_chromosome_db) is selected, resolve the HSP
+  // midpoint to overlapping features + flanking genes automatically.
+  useEffect(() => {
+    if (!selectedHit || !currentDB?.is_chromosome_db) {
+      setSpatialResult(null)
       return
     }
-    navigate(`/transcript?db=${encodeURIComponent(db)}&chr=${encodeURIComponent(chr)}&pos=${pos}`)
-  }, [resolveHitDb, navigate, message, t])
+    const hsp = selectedHit.alignments[0]
+    if (!hsp) {
+      setSpatialResult(null)
+      return
+    }
+    const pos = Math.floor((hsp.subject_start + hsp.subject_end) / 2)
+    let cancelled = false
+    setSpatialLoading(true)
+    fetchSpatial(currentDB.name, selectedHit.subject_id, pos)
+      .then((r) => {
+        if (cancelled) return
+        setSpatialResult(r)
+        setTimeout(() => {
+          spatialRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }, 100)
+      })
+      .catch(() => {
+        if (!cancelled) setSpatialResult(null)
+      })
+      .finally(() => {
+        if (!cancelled) setSpatialLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedHit, currentDB])
 
   const handleSubmit = useCallback(async () => {
     const err = validateFASTA(fasta)
@@ -363,9 +399,18 @@ export default function BlastPage() {
                     <Divider />
                     <AlignmentView
                       hit={selectedHit}
-                      onLookupTranscript={handleLookupTranscript}
-                      onLookupRegion={handleLookupRegion}
+                      onLookupTranscript={currentDB?.is_chromosome_db ? undefined : handleLookupTranscript}
                     />
+                    {(spatialLoading || spatialResult) && (
+                      <div ref={spatialRef}>
+                        <Divider />
+                        <SpatialPanel
+                          result={spatialResult}
+                          loading={spatialLoading}
+                          onSelectFeature={handleLookupTranscript}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </>

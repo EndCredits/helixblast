@@ -231,17 +231,17 @@ Layout route (`AppLayout`: header, degraded banner, `<Outlet/>`) hosts three pag
 | Path | Page | URL params |
 |---|---|---|
 | `/` | → redirect to `/blast` | — |
-| `/blast` | BLAST search: input panel, job list, results/alignment | `?job=<id>` — selected job |
-| `/transcript` | Transcript lookup + spatial browsing (single-db) | `?db=<name>&id=<tx>` or `?db=<name>&chr=<chr>&pos=<n>` |
+| `/blast` | BLAST search: input panel, job list, results/alignment, auto spatial panel | `?job=<id>` — selected job |
+| `/transcript` | Transcript lookup (single-db): regions + gene family navigation | `?db=<name>&id=<tx>` |
 | `/settings` | Language / notifications / cache | — |
 | anything else | → redirect to `/blast` | — |
 
 Cross-page flow is encoded in **URL search params** — no shared state store. Consequences:
 
 - Navigating from a BLAST hit to its transcript (`?db=&id=`) does **not** destroy the BLAST page context; going back restores the selected job instantly from IndexedDB via `?job=`.
-- Transcript lookups and spatial regions are bookmarkable/shareable URLs that survive refresh (the server-side SPA fallback serves the shell for any extensionless path).
-- Clicking gene-family members or spatial features on `/transcript` just rewrites params, so browser back/forward walks the lookup history.
-- Spatial search lives entirely on `/transcript`; the BLAST page's "lookup region" button navigates there with `db/chr/pos`.
+- Transcript lookups are bookmarkable/shareable URLs that survive refresh (the server-side SPA fallback serves the shell for any extensionless path).
+- Clicking gene-family members or spatial feature IDs rewrites params, so browser back/forward walks the lookup history.
+- **Spatial search is an auxiliary view of BLAST results, not a standalone page.** When a hit is selected and its database has `is_chromosome_db: true`, the BLAST page automatically resolves the HSP midpoint to overlapping features + flanking genes and renders them below the alignment (`SpatialPanel`). Feature IDs link into `/transcript?db=&id=`. It never appears for non-chromosome databases.
 
 ### Serving & SPA fallback
 

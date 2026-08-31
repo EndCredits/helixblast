@@ -17,8 +17,8 @@ import { App as AntApp } from 'antd'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 import { useDatabases } from '../hooks/useJobs'
-import type { TranscriptResult, SpatialResult } from '../api/client'
-import { lookupTranscript, fetchSpatial } from '../api/client'
+import type { TranscriptResult } from '../api/client'
+import { lookupTranscript } from '../api/client'
 import SequenceText from '../lib/sequenceColor'
 import { codePanelStyle } from '../theme'
 
@@ -32,12 +32,9 @@ export default function TranscriptPage() {
 
   const dbParam = searchParams.get('db') || ''
   const idParam = searchParams.get('id') || ''
-  const chrParam = searchParams.get('chr') || ''
-  const posParam = searchParams.get('pos') || ''
 
   const [inputValue, setInputValue] = useState(idParam)
   const [transcriptResult, setTranscriptResult] = useState<TranscriptResult | null>(null)
-  const [spatialResult, setSpatialResult] = useState<SpatialResult | null>(null)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -47,43 +44,26 @@ export default function TranscriptPage() {
   useEffect(() => {
     let cancelled = false
     setTranscriptResult(null)
-    setSpatialResult(null)
 
-    if (!dbParam) return
+    if (!dbParam || !idParam) return
 
-    if (idParam) {
-      setLoading(true)
-      lookupTranscript(dbParam, idParam)
-        .then((r) => {
-          if (!cancelled) setTranscriptResult(r)
-        })
-        .catch((e: any) => {
-          if (!cancelled) message.error(e.message || t('home.errors.lookupFailed'))
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false)
-        })
-    } else if (chrParam && posParam) {
-      const pos = parseInt(posParam, 10)
-      if (Number.isNaN(pos)) return
-      setLoading(true)
-      fetchSpatial(dbParam, chrParam, pos)
-        .then((r) => {
-          if (!cancelled) setSpatialResult(r)
-        })
-        .catch((e: any) => {
-          if (!cancelled) message.error(e.message || t('home.errors.spatialFailed'))
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false)
-        })
-    }
+    setLoading(true)
+    lookupTranscript(dbParam, idParam)
+      .then((r) => {
+        if (!cancelled) setTranscriptResult(r)
+      })
+      .catch((e: any) => {
+        if (!cancelled) message.error(e.message || t('home.errors.lookupFailed'))
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
 
     return () => {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dbParam, idParam, chrParam, posParam])
+  }, [dbParam, idParam])
 
   const lookupById = useCallback((id: string) => {
     const next = new URLSearchParams()
@@ -104,12 +84,6 @@ export default function TranscriptPage() {
     }
     lookupById(tid)
   }, [inputValue, dbParam, lookupById, message, t])
-
-  const handleClearSpatial = useCallback(() => {
-    const next = new URLSearchParams()
-    if (dbParam) next.set('db', dbParam)
-    setSearchParams(next)
-  }, [dbParam, setSearchParams])
 
   return (
     <Row gutter={24}>
@@ -157,58 +131,6 @@ export default function TranscriptPage() {
           )}
 
           {loading && <Spin style={{ display: 'block', margin: '12px auto' }} />}
-
-          {!loading && spatialResult && !transcriptResult && (
-            <Space orientation="vertical" style={{ width: '100%' }} size="small">
-              <Alert
-                title={`${spatialResult.chromosome}:${spatialResult.position}`}
-                description={
-                  spatialResult.features.length > 0
-                    ? t('home.spatial.overlapping', { count: spatialResult.features.length })
-                    : t('home.spatial.noFeatures')
-                }
-                type={spatialResult.features.length > 0 ? 'info' : 'warning'}
-                showIcon
-              />
-              {spatialResult.features.map((f) => (
-                <Card key={f.id} size="small">
-                  <Space>
-                    <Tag color={f.type === 'gene' ? 'blue' : f.type === 'mRNA' ? 'green' : 'orange'}>{f.type}</Tag>
-                    <Text code style={{ cursor: 'pointer' }} onClick={() => lookupById(f.id)}>
-                      {f.id}
-                    </Text>
-                    <Text type="secondary">({f.start}-{f.end})</Text>
-                  </Space>
-                </Card>
-              ))}
-              {spatialResult.features.length > 0 && (
-                <Text type="secondary" style={{ fontSize: 11 }}>{t('home.transcript.regions.clickId')}</Text>
-              )}
-              {spatialResult.upstream && (
-                <Card key={spatialResult.upstream.id} size="small">
-                  <Space>
-                    <Tag>↑ {t('home.spatial.upstream')} ({spatialResult.position - spatialResult.upstream.end} bp)</Tag>
-                    <Text code style={{ cursor: 'pointer' }} onClick={() => lookupById(spatialResult.upstream!.id)}>
-                      {spatialResult.upstream.id}
-                    </Text>
-                    <Text type="secondary">({spatialResult.upstream.start}-{spatialResult.upstream.end})</Text>
-                  </Space>
-                </Card>
-              )}
-              {spatialResult.downstream && (
-                <Card key={spatialResult.downstream.id} size="small">
-                  <Space>
-                    <Tag>↓ {t('home.spatial.downstream')} ({spatialResult.downstream.start - spatialResult.position} bp)</Tag>
-                    <Text code style={{ cursor: 'pointer' }} onClick={() => lookupById(spatialResult.downstream!.id)}>
-                      {spatialResult.downstream.id}
-                    </Text>
-                    <Text type="secondary">({spatialResult.downstream.start}-{spatialResult.downstream.end})</Text>
-                  </Space>
-                </Card>
-              )}
-              <Button size="small" onClick={handleClearSpatial}>{t('home.spatial.clear')}</Button>
-            </Space>
-          )}
 
           {!loading && transcriptResult && (
             <Space orientation="vertical" style={{ width: '100%' }} size="middle">
