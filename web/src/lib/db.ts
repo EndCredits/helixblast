@@ -108,6 +108,9 @@ export async function cacheClear() {
 // type 'setting'), NOT subject to the 24h TTL that applies to jobs.
 // Unlike localStorage, they survive across browsers/devices on the same origin
 // and follow the project's IndexedDB-first convention.
+// Exception: the theme preference lives in localStorage (web/src/themeMode.tsx)
+// because it must be resolved before first paint to avoid a theme flash —
+// see architecture → Dark mode.
 
 export async function getSetting(key: string): Promise<any | null> {
   const db = await open()
