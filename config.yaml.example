@@ -6,12 +6,6 @@ storage:
   data_dir: ./data
   result_ttl_hours: 24
 
-s3:
-  endpoint: ""
-  bucket: ""
-  access_key: ""
-  secret_key: ""
-
 blast:
   path: ""
   max_jobs: 5

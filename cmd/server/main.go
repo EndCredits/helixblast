@@ -40,21 +40,11 @@ func main() {
 
 	logger.Printf("Storage backend: %s", cfg.Storage.Type)
 
-	var store storage.Store
-	switch cfg.Storage.Type {
-	case "s3":
-		s3Store, err := storage.NewS3Store(cfg.S3.Endpoint, cfg.S3.Bucket, cfg.S3.AccessKey, cfg.S3.SecretKey)
-		if err != nil {
-			logger.Fatalf("Failed to create S3 store: %v", err)
-		}
-		store = s3Store
-	default:
-		localStore, err := storage.NewLocalStore(cfg.Storage.DataDir)
-		if err != nil {
-			logger.Fatalf("Failed to create local store: %v", err)
-		}
-		store = localStore
+	localStore, err := storage.NewLocalStore(cfg.Storage.DataDir)
+	if err != nil {
+		logger.Fatalf("Failed to create local store: %v", err)
 	}
+	var store storage.Store = localStore
 
 	blastPath, err := blast.ResolveBlastPath(cfg.Blast.Path)
 	if err != nil {

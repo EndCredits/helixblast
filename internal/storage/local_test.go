@@ -99,28 +99,3 @@ func TestLocalStoreListExpired(t *testing.T) {
 		t.Errorf("newly created files should not be expired, got %d", len(expired))
 	}
 }
-
-func TestLocalStorePresignedNotSupported(t *testing.T) {
-	dir, err := os.MkdirTemp("", "helixblast-storage-test-")
-	if err != nil {
-		t.Fatalf("create temp dir: %v", err)
-	}
-	defer os.RemoveAll(dir)
-
-	store, err := NewLocalStore(dir)
-	if err != nil {
-		t.Fatalf("NewLocalStore: %v", err)
-	}
-
-	ctx := context.Background()
-
-	_, err = store.PresignedGetURL(ctx, "key", time.Hour)
-	if err == nil {
-		t.Error("presigned URL should not be supported for local storage")
-	}
-
-	_, err = store.PresignedUploadURL(ctx, "key", time.Hour)
-	if err == nil {
-		t.Error("presigned upload URL should not be supported for local storage")
-	}
-}

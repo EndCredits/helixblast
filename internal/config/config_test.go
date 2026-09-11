@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"os"
 	"testing"
 )
@@ -72,6 +73,22 @@ storage:
 	_, err := Load(tmp)
 	if err == nil {
 		t.Error("expected error for invalid storage type")
+	}
+}
+
+func TestLoadS3StorageRejected(t *testing.T) {
+	tmp := writeTempYAML(t, `
+storage:
+  type: s3
+`)
+	defer os.Remove(tmp)
+
+	_, err := Load(tmp)
+	if err == nil {
+		t.Fatal("expected error for removed s3 storage type")
+	}
+	if !strings.Contains(err.Error(), "no longer supported") {
+		t.Errorf("expected migration hint in error, got: %v", err)
 	}
 }
 

@@ -11,7 +11,6 @@ import (
 type Config struct {
 	Server   ServerConfig   `yaml:"server"`
 	Storage  StorageConfig  `yaml:"storage"`
-	S3       S3Config       `yaml:"s3"`
 	Blast    BlastConfig    `yaml:"blast"`
 	Database DatabaseConfig `yaml:"database"`
 }
@@ -24,13 +23,6 @@ type StorageConfig struct {
 	Type           string `yaml:"type"`
 	DataDir        string `yaml:"data_dir"`
 	ResultTTLHours int    `yaml:"result_ttl_hours"`
-}
-
-type S3Config struct {
-	Endpoint  string `yaml:"endpoint"`
-	Bucket    string `yaml:"bucket"`
-	AccessKey string `yaml:"access_key"`
-	SecretKey string `yaml:"secret_key"`
 }
 
 type BlastConfig struct {
@@ -99,16 +91,11 @@ func (c *Config) validate() error {
 	if c.Server.Port < 1 || c.Server.Port > 65535 {
 		return fmt.Errorf("invalid port: %d", c.Server.Port)
 	}
-	if c.Storage.Type != "local" && c.Storage.Type != "s3" {
-		return fmt.Errorf("invalid storage type: %s (must be 'local' or 's3')", c.Storage.Type)
-	}
 	if c.Storage.Type == "s3" {
-		if c.S3.Endpoint == "" {
-			return fmt.Errorf("s3.endpoint is required when storage type is 's3'")
-		}
-		if c.S3.Bucket == "" {
-			return fmt.Errorf("s3.bucket is required when storage type is 's3'")
-		}
+		return fmt.Errorf("storage type 's3' is no longer supported — genome and index data are served via Cloudflare Worker + R2; set storage.type to 'local'")
+	}
+	if c.Storage.Type != "local" {
+		return fmt.Errorf("invalid storage type: %s (must be 'local')", c.Storage.Type)
 	}
 	if c.Storage.ResultTTLHours < 1 {
 		return fmt.Errorf("result_ttl_hours must be at least 1")

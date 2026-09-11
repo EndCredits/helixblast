@@ -17,28 +17,20 @@ The single HTTP port for both API and embedded frontend. No separate dev/prod po
 
 ```yaml
 storage:
-  type: local           # local | s3
+  type: local           # local
   data_dir: ./data
   result_ttl_hours: 24
 ```
 
 | Field | Default | Why |
 |-------|---------|-----|
-| `type` | `local` | Local disk for single-server deployments. `s3` for S3-compatible storage (Cloudflare R2, MinIO, AWS S3) |
-| `data_dir` | `./data` | Where job results are stored on disk. Ignored when `type=s3` |
-| `result_ttl_hours` | `24` | Job results are ephemeral — auto-deleted after this period. Governs all three expiry surfaces at once: stored files / S3 objects (janitor), and the in-memory job registry (terminal-state jobs pruned, IDs then resolve to 404). No long-term archive |
+| `type` | `local` | Local disk. S3-compatible backends were removed — see note below |
+| `data_dir` | `./data` | Where job results are stored on disk |
+| `result_ttl_hours` | `24` | Job results are ephemeral — auto-deleted after this period. Governs all expiry surfaces at once: stored files (janitor) and the in-memory job registry (terminal-state jobs pruned, IDs then resolve to 404). No long-term archive |
 
-### s3
+### Why there is no S3 backend
 
-```yaml
-s3:
-  endpoint: ""
-  bucket: ""
-  access_key: ""
-  secret_key: ""
-```
-
-Only required when `storage.type = s3`. Uses S3-compatible protocol — works with Cloudflare R2, MinIO, AWS S3. The `endpoint` should include the protocol (e.g. `https://`); the config loader only checks that it is non-empty, so include the scheme to ensure the S3 client connects correctly.
+Earlier versions could keep job artifacts on S3-compatible storage (MinIO/R2/AWS). That path was retired: genome FASTA and GFF3 indexes are now served through the **Cloudflare Worker + R2** pipeline (see [Transcript Lookup](transcript-lookup.md)) — byte-range random reads over the S3 API performed too poorly to be worth optimizing, and job results themselves never touch disk anymore under the IndexedDB-first architecture. Setting `type: s3` now fails config validation with a migration hint.
 
 ### blast
 

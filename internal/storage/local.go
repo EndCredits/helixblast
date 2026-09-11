@@ -90,14 +90,6 @@ func (s *LocalStore) ListExpired(ctx context.Context, ttl time.Duration) ([]stri
 	return expired, nil
 }
 
-func (s *LocalStore) PresignedGetURL(ctx context.Context, key string, ttl time.Duration) (string, error) {
-	return "", fmt.Errorf("presigned URLs not supported with local storage")
-}
-
-func (s *LocalStore) PresignedUploadURL(ctx context.Context, key string, ttl time.Duration) (string, error) {
-	return "", fmt.Errorf("presigned URLs not supported with local storage")
-}
-
 func sanitizeKey(key string) string {
 	key = strings.ReplaceAll(key, "..", "")
 	key = strings.ReplaceAll(key, "\\", "/")

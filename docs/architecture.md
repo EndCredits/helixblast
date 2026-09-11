@@ -198,7 +198,7 @@ Submit → Pending → Queued → Running → Success / Failed
 
 **Timeout**: Each job has a 2-hour `context.WithTimeout`. BLAST receives the context and is killed by the OS when it expires.
 
-**Cleanup**: A janitor goroutine runs every 10 minutes, scanning for jobs older than `result_ttl_hours`. Both local files and S3 objects are cleaned. The worker pool runs a second goroutine on the same cadence that prunes terminal-state jobs from the in-memory registry once they pass `result_ttl_hours`, bounding registry memory to ~24h of job history and keeping queue-position rescans O(recent jobs) instead of O(all-time jobs).
+**Cleanup**: A janitor goroutine runs every 10 minutes, scanning for expired job files in the local store older than `result_ttl_hours`. The worker pool runs a second goroutine on the same cadence that prunes terminal-state jobs from the in-memory registry once they pass `result_ttl_hours`, bounding registry memory to ~24h of job history and keeping queue-position rescans O(recent jobs) instead of O(all-time jobs).
 
 ## SSE streaming
 
