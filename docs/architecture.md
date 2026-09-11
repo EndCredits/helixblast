@@ -214,7 +214,7 @@ Each SSE connection creates a subscriber channel on the Job. Status changes push
 
 ## BLAST parameter whitelist
 
-At startup, HelixBLAST runs `blastn -help`, `blastp -help`, `blastx -help`, `tblastn -help`, `tblastx -help` and parses the output to build a whitelist of valid parameters. User-supplied `advanced_params` are validated against this list at **job submission time** — unknown parameters are rejected with `400 Bad Request` and the job never enters the queue (the worker re-checks before execution).
+At startup, HelixBLAST runs `blastn -help`, `blastp -help`, `blastx -help`, `tblastn -help`, `tblastx -help` and parses the output to build a whitelist of valid parameters. If none can be parsed the server **refuses to start** (`Fatalf`) — a host where BLAST+ cannot even print help is not a host that can run BLAST, and a fail-open whitelist would silently drop the parameter validation the whole subsystem exists for. User-supplied `advanced_params` are validated against this list at **job submission time** — unknown parameters are rejected with `400 Bad Request` and the job never enters the queue (the worker re-checks before execution).
 
 The whitelist deliberately contains **every parameter the installed BLAST+ actually supports** — tuning is a user right, not a privileged operation. The single exception is a small server-reserved set (`query`, `db`, `outfmt`, `num_threads`, `out`) that `BuildCommand` injects itself: BLAST+ applies last-wins for duplicated flags, so a user passing one of those names would silently override server-controlled behavior. Command-line injection is prevented independently of the whitelist: keys and values are sanitized against shell metacharacters, and `exec.Command` never goes through a shell.
 

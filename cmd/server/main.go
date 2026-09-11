@@ -44,11 +44,9 @@ func main() {
 
 	whitelist, err := blast.BuildWhitelist(blastPath)
 	if err != nil {
-		logger.Printf("WARNING: Failed to build param whitelist: %v (all params allowed)", err)
-		whitelist = nil
-	} else {
-		logger.Printf("BLAST param whitelist: %d params", whitelist.Len())
+		logger.Fatalf("Failed to build param whitelist: %v — refusing to start without parameter validation", err)
 	}
+	logger.Printf("BLAST param whitelist: %d params", whitelist.Len())
 
 	dm, err := config.NewDatabaseManager(cfg.Database.ConfigPath)
 	if err != nil {
@@ -87,7 +85,7 @@ func main() {
 
 		params := make(map[string]string)
 		for key, val := range job.AdvancedParams {
-			if whitelist != nil && !whitelist.IsAllowed(key) {
+			if !whitelist.IsAllowed(key) {
 				return nil, fmt.Errorf("invalid blast parameter: -%s", key)
 			}
 			params[key] = val

@@ -171,13 +171,12 @@ func (s *Server) handleJobCreate(w http.ResponseWriter, r *http.Request) {
 
 	// Validate advanced params against the BLAST parameter whitelist at
 	// submission time. Unknown parameters are rejected with 400 — the job
-	// never enters the queue. A nil whitelist (build failure) allows all.
-	if s.whitelist != nil {
-		for key := range req.AdvancedParams {
-			if !s.whitelist.IsAllowed(key) {
-				jsonError(w, http.StatusBadRequest, fmt.Sprintf("invalid blast parameter: -%s", key))
-				return
-			}
+	// never enters the queue. The server refuses to start if the whitelist
+	// cannot be built, so s.whitelist is always non-nil here.
+	for key := range req.AdvancedParams {
+		if !s.whitelist.IsAllowed(key) {
+			jsonError(w, http.StatusBadRequest, fmt.Sprintf("invalid blast parameter: -%s", key))
+			return
 		}
 	}
 
