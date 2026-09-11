@@ -41,12 +41,11 @@ type BlastResult struct {
 }
 
 var validPrograms = map[string]string{
-	"blastn":    "nucleotide",
-	"blastp":    "protein",
-	"blastx":    "protein",
-	"tblastn":   "protein",
-	"tblastx":   "protein",
-	"megablast": "nucleotide",
+	"blastn":  "nucleotide",
+	"blastp":  "protein",
+	"blastx":  "protein",
+	"tblastn": "protein",
+	"tblastx": "protein",
 }
 
 var (

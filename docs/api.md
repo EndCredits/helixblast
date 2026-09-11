@@ -70,7 +70,7 @@ Content-Type: application/json
 | Field | Required | Notes |
 |-------|----------|-------|
 | `fasta` | Yes | Valid FASTA format. Shell metacharacters rejected |
-| `program` | Yes | `blastn`, `blastp`, `blastx`, `tblastn`, `megablast`, `tblastx` |
+| `program` | Yes | `blastn`, `blastp`, `blastx`, `tblastn`, `tblastx` — megablast is a `task` of `blastn`, not a program (see `template`) |
 | `dbs` | Yes* | Array of database names. Takes precedence over `db` when both are present |
 | `db` | Yes* | Single database name (shorthand). Used when `dbs` is not provided |
 | `template` | No | Shorthand for `advanced_params.task` |
