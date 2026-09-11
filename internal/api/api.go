@@ -149,6 +149,19 @@ func (s *Server) handleJobCreate(w http.ResponseWriter, r *http.Request) {
 			dbs = []string{req.Database}
 		}
 	}
+	// Deduplicate while preserving order: the same database twice would run
+	// BLAST twice and double-count its hits in the merge.
+	if len(dbs) > 1 {
+		seen := make(map[string]bool, len(dbs))
+		unique := dbs[:0]
+		for _, d := range dbs {
+			if !seen[d] {
+				seen[d] = true
+				unique = append(unique, d)
+			}
+		}
+		dbs = unique
+	}
 
 	if req.FastA == "" || req.Program == "" || len(dbs) == 0 {
 		jsonError(w, http.StatusBadRequest, "fasta, program, and dbs (or db) are required")

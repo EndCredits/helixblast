@@ -101,7 +101,6 @@ func main() {
 			EValue:         10,
 			OutFmt:         "6 qseqid sseqid pident qcovs evalue bitscore qstart qend sstart send qseq sseq",
 			AdvancedParams: params,
-			Timeout:        2 * time.Hour,
 			WorkDir:        workDir,
 		})
 	}

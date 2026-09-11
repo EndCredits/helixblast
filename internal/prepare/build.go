@@ -80,7 +80,7 @@ func BuildBinaryIndexFromData(gff *transcript.GFF3Data, binPath string) error {
 	b.writeSpatial(spChrs, spHeadersEnd)
 
 	spatialEnd := uint64(b.size())
-	fastaOff := b.align(spatialEnd)
+	fastaOff := spatialEnd
 	fastaEnd := b.writeFastaIndex(gff.FastaIndex, fastaOff)
 
 	poolOff := fastaEnd

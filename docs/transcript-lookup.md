@@ -221,6 +221,10 @@ The genome scan covers 5kb upstream plus the full gene body. Five regions are de
 
 This design does a single genome scan instead of five separate ones. The Worker and local engine only extract one sequence range; the frontend does the slicing.
 
+### Fallback chain — exact boundaries
+
+The Worker is consulted **only when no local FASTA source is configured** for the database (`fasta_dir` and `fasta_file` both empty). It is a deployment-mode fallback, not an error fallback: if `fasta_dir` is configured but the requested chromosome file is missing, the request fails (404) rather than silently spilling over to the Worker — a half-mounted genome should surface loudly, not quietly serve data from a different copy.
+
 ## Spatial Search
 
 When a BLAST hit lands on a chromosome database (`is_chromosome_db: true`), HelixBLAST automatically resolves the hit's genomic **range** (subject span across all HSPs) to overlapping GFF3 features via `/api/v1/spatial`. The spatial index is built alongside the main GFF3 index:

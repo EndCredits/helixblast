@@ -33,7 +33,6 @@ type Pool struct {
 	resultTTL time.Duration
 	wg        sync.WaitGroup
 	stopCh    chan struct{}
-	doneCh    chan struct{}
 }
 
 const pruneInterval = 10 * time.Minute
@@ -46,7 +45,6 @@ func NewPool(maxConcurrent int, maxQueue int, execFn ExecFunc, resultTTL time.Du
 		execFn:    execFn,
 		resultTTL: resultTTL,
 		stopCh:    make(chan struct{}),
-		doneCh:    make(chan struct{}),
 	}
 
 	for i := 0; i < maxConcurrent; i++ {
@@ -91,19 +89,6 @@ func (p *Pool) Get(id string) (*Job, error) {
 		return nil, fmt.Errorf("%w: %s", ErrJobNotFound, id)
 	}
 	return job, nil
-}
-
-func (p *Pool) List() []JobSnapshot {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	result := make([]JobSnapshot, 0, len(p.jobs))
-	for _, j := range p.jobs {
-		snap := j.Snapshot()
-		snap.QueuePos = p.queuePosUnsafe(j)
-		result = append(result, snap)
-	}
-	return result
 }
 
 func (p *Pool) Cancel(id string) error {
@@ -159,7 +144,6 @@ func (p *Pool) Stop() {
 		log.Printf("[helixblast] Shutdown timeout: forcing exit (some BLAST jobs may still be running)")
 	}
 
-	close(p.doneCh)
 }
 
 func (p *Pool) pruneLoop() {
@@ -200,20 +184,6 @@ func (p *Pool) pruneExpired(now time.Time) int {
 		}
 	}
 	return removed
-}
-
-func (p *Pool) queuePosUnsafe(job *Job) int {
-	status := job.GetStatus()
-	if status == StatusQueued {
-		pos := 0
-		for _, j := range p.jobs {
-			if j.GetStatus() == StatusQueued && j.CreatedAt.Before(job.CreatedAt) {
-				pos++
-			}
-		}
-		return pos + 1
-	}
-	return 0
 }
 
 func (p *Pool) updateQueuePositions() {

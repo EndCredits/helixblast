@@ -6,8 +6,8 @@ export type ResolvedMode = 'light' | 'dark'
 
 // Brand + categorical colors are theme-aware; neutrals are left to AntD's
 // algorithms (default/dark) and consumed via theme.useToken() in components.
-export const brandLight = '#0e7490'
-export const brandDark = '#2dd4bf'
+const brandLight = '#0e7490'
+const brandDark = '#2dd4bf'
 
 const statusLight = { success: '#059669', warning: '#d97706', error: '#dc2626' }
 const statusDark = { success: '#10b981', warning: '#f59e0b', error: '#ef4444' }
@@ -16,16 +16,16 @@ const statusDark = { success: '#10b981', warning: '#f59e0b', error: '#ef4444' }
 const darkBgBase = '#0b1220'
 const darkTextBase = '#e5e7eb'
 
-export const nucleotideColorsLight: Record<string, string> = {
+const nucleotideColorsLight: Record<string, string> = {
   A: '#059669', C: '#2563eb', G: '#d97706', T: '#dc2626', U: '#db2777',
 }
-export const nucleotideColorsDark: Record<string, string> = {
+const nucleotideColorsDark: Record<string, string> = {
   A: '#34d399', C: '#60a5fa', G: '#fbbf24', T: '#f87171', U: '#f472b6',
 }
-export const gapColorLight = '#94a3b8'
-export const gapColorDark = '#64748b'
-export const ambiguousColorLight = '#64748b'
-export const ambiguousColorDark = '#94a3b8'
+const gapColorLight = '#94a3b8'
+const gapColorDark = '#64748b'
+const ambiguousColorLight = '#64748b'
+const ambiguousColorDark = '#94a3b8'
 
 export function getNucleotideColors(mode: ResolvedMode) {
   return mode === 'dark'
@@ -37,6 +37,18 @@ export const FONT_STACK =
   "'Google Sans Flex', 'Noto Sans SC', -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif"
 export const MONO_STACK =
   "'Fira Code', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace"
+
+export function codePanelStyleFromToken(token: {
+  colorFillQuaternary: string
+  colorBorder: string
+}): CSSProperties {
+  return {
+    background: token.colorFillQuaternary,
+    border: `1px solid ${token.colorBorder}`,
+    borderRadius: 8,
+    fontFamily: MONO_STACK,
+  }
+}
 
 export function getThemeConfig(mode: ResolvedMode): ThemeConfig {
   const dark = mode === 'dark'
@@ -84,17 +96,4 @@ export function getThemeConfig(mode: ResolvedMode): ThemeConfig {
   }
 
   return base
-}
-
-// Build a code/sequence panel style from resolved tokens so it flips with theme.
-export function codePanelStyleFromToken(token: {
-  colorFillQuaternary: string
-  colorBorder: string
-}): CSSProperties {
-  return {
-    background: token.colorFillQuaternary,
-    border: `1px solid ${token.colorBorder}`,
-    borderRadius: 8,
-    fontFamily: MONO_STACK,
-  }
 }

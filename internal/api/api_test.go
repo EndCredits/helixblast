@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -129,5 +130,47 @@ func TestHandleJobCreateDuringShutdownReturns503(t *testing.T) {
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503 during shutdown, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandleJobCreateDedupesDatabases(t *testing.T) {
+	dir := t.TempDir()
+	dbFile := filepath.Join(dir, "databases.yaml")
+	if err := os.WriteFile(dbFile, []byte("databases:\n  - name: nt\n    type: nucleotide\n    path: /tmp/nt\n  - name: nr\n    type: protein\n    path: /tmp/nr\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dm, err := config.NewDatabaseManager(dbFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dm.Stop()
+
+	pool := worker.NewPool(1, 4, func(ctx context.Context, job *worker.Job, dbName string) ([]blast.Hit, error) {
+		return nil, nil
+	}, time.Hour)
+	defer pool.Stop()
+	s := &Server{pool: pool, dbMgr: dm, whitelist: blast.NewParamWhitelist([]string{"task"})}
+
+	body := `{"fasta":">seq1\nATGCGTAC","program":"blastn","dbs":["nt","nr","nt"]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/jobs", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	s.handleJobCreate(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		JobID string `json:"job_id"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	job, err := pool.Get(resp.JobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Databases is set at construction and only read afterwards — safe to inspect.
+	got := len(job.Databases)
+	if got != 2 {
+		t.Errorf("dbs [nt,nr,nt] should dedupe to 2, got %d: %v", got, job.Databases)
 	}
 }

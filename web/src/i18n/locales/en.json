@@ -3,8 +3,7 @@
     "appName": "HelixBLAST",
     "healthy": "Healthy",
     "degraded": "Degraded",
-    "workers": "{{count}} workers",
-    "version": "v{{version}}"
+    "workers": "{{count}} workers"
   },
   "nav": {
     "blast": "BLAST",
@@ -29,21 +28,14 @@
       "enterTranscriptId": "Please enter a transcript ID",
       "dbNotAvailable": "Database not available for this hit",
       "noDbSelected": "No database selected",
-      "selectOneDb": "Select exactly one database for transcript lookup (multiple selected currently)",
-      "lookingUp": "Looking up {{id}} ...",
-      "found": "Found: {{loc}} ({{strand}})",
       "lookupFailed": "Transcript lookup failed",
-      "noDbSpatial": "No database available for spatial lookup",
-      "spatialFailed": "Spatial lookup failed",
       "cancelRequested": "Job cancellation requested",
       "cancelFailed": "Failed to cancel job"
     },
     "degraded": {
-      "title": "System running in low-resource mode",
-      "description": "The server has limited CPU/memory. Job throughput may be reduced."
+      "title": "System running in low-resource mode"
     },
     "mode": {
-      "blast": "BLAST Search",
       "transcript": "Transcript Lookup"
     },
     "transcript": {
@@ -52,7 +44,6 @@
       "placeholder": "e.g. LOC112737024",
       "lookup": "Lookup Sequence",
       "selectDbFirst": "Select a database first",
-      "onlyOneDb": "Only one database allowed for transcript lookup",
       "strand": {
         "forward": "Forward",
         "reverse": "Reverse"
@@ -65,7 +56,6 @@
         "cds": "CDS (joined, {{len}} bp)",
         "transcripts": "Transcripts:",
         "cdss": "CDSs:",
-        "exons": "Exons:",
         "gene": "Gene:",
         "downloadFasta": "FASTA",
         "clickId": "Click an ID to look up transcript / CDS sequence"
@@ -82,7 +72,6 @@
       "queuePos": "Queue position: #{{pos}}",
       "cancel": "Cancel",
       "resultStatus": {
-        "success": "Job completed successfully",
         "failed": "Job Failed",
         "cancelled": "Job Cancelled",
         "running": "Running...",
@@ -95,25 +84,18 @@
       "title": "Results",
       "noSelection": "Select a hit to view alignment",
       "noHits": "No results to display",
-      "query": "Query",
-      "subject": "Subject",
       "lookupTranscript": "Transcript",
-      "lookupRegion": "Region",
       "exportFasta": "Export FASTA",
       "reconnecting": "Reconnecting...",
       "connecting": "Connecting...",
       "close": "Close"
     },
     "spatial": {
-      "title": "Genomic Context",
       "lookingUp": "Looking up genomic features ...",
-      "noFeatures": "No overlapping features — showing flanking genes",
-      "overlapping": "{{count}} overlapping feature(s)",
       "overlappingAt": "{{count}} overlapping feature(s) at {{pos}}",
       "noOverlap": "No overlap — flanking genes at position {{pos}}",
       "upstream": "upstream",
-      "downstream": "downstream",
-      "clear": "Clear"
+      "downstream": "downstream"
     },
     "sequenceInput": {
       "fastaDetected": "FASTA format detected"
@@ -131,7 +113,6 @@
   },
   "settings": {
     "title": "Settings",
-    "back": "Back to Home",
     "language": {
       "title": "Language",
       "desc": "Choose the interface language. Applied immediately."
@@ -145,9 +126,7 @@
       "title": "Local Cache",
       "desc": "{{count}} job(s) stored locally (24h TTL).",
       "clear": "Clear local cache",
-      "note": "Clears jobs only. Settings are kept.",
-      "cleared": "Local cache cleared",
-      "clearFailed": "Failed to clear cache"
+      "note": "Clears jobs only. Settings are kept."
     },
     "theme": {
       "title": "Appearance",

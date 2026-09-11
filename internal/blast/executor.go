@@ -21,7 +21,6 @@ type ExecConfig struct {
 	EValue         float64
 	OutFmt         string
 	AdvancedParams map[string]string
-	Timeout        time.Duration
 	WorkDir        string
 }
 
