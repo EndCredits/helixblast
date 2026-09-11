@@ -199,19 +199,17 @@ GET /api/v1/spatial?db=<name>&chr=<chr>&pos=<n>              # point query (star
     "chromosome": "Chr01",
     "start": 17146608,
     "end": 17148002,
-    "features": [
-      { "start": 17146608, "end": 17148002, "id": "g1065", "type": "gene" },
-      { "start": 17146608, "end": 17148002, "id": "g1065.t1", "type": "mRNA" },
-      { "start": 17146608, "end": 17148002, "id": "g1065.t1.CDS1", "type": "CDS" }
+    "overlapping": [
+      { "start": 17146608, "end": 17148002, "id": "arahy.Tifrunner.gnm2.ann2.Ah01g000100", "type": "gene" }
     ],
-    "upstream": { "start": 11401, "end": 11811, "id": "g1", "type": "gene" },
-    "downstream": { "start": 22075, "end": 27453, "id": "g2", "type": "gene" }
+    "upstream": { "start": 11401, "end": 11811, "id": "…Ah01g000000", "type": "gene" },
+    "downstream": { "start": 22075, "end": 27453, "id": "…Ah01g000200", "type": "gene" }
   }
 ```
 
-Finds all GFF3 features (gene, mRNA, CDS, exon) whose span **intersects the query range**, plus the nearest upstream and downstream features for orientation. Reversed bounds (`start > end`, e.g. from minus-strand BLAST HSPs) are normalized; the response carries the normalized range. **Every returned feature keeps its full indexed span — never clipped to the query window**: a hit covering only the 3′ end of a gene still reports the gene's complete coordinates. Returns `404` if the chromosome is not in the spatial index.
+**Gene-centric by design**: `overlapping` lists the *genes* whose span intersects the query range (usually 0 or 1; nested genes may yield more), `upstream`/`downstream` are the nearest *genes* on each side. mRNA/CDS/exon records are excluded — they nest under genes and are one Transcript Lookup away. Every returned gene carries its **full indexed span, never clipped to the query window**: a hit covering only the 3′ end of a gene still reports the gene's complete coordinates. Reversed bounds (`start > end`, e.g. minus-strand BLAST HSPs) are normalized; the response carries the normalized range. Windows wider than **1 Mb** are rejected with `400` (defensive cap). Returns `404` if the chromosome is not in the spatial index.
 
-Set `is_chromosome_db: true` in `databases.yaml` to enable automatic spatial lookup when viewing BLAST alignment results — the frontend sends the hit's full subject span (min/max across all HSPs).
+Set `is_chromosome_db: true` in `databases.yaml` to enable automatic spatial lookup when viewing BLAST alignment results — the frontend sends the hit's best-HSP-anchored cluster span (the best HSP's subject interval, merged with HSPs within a 20 kb gap; noise HSPs megabases away from low-complexity queries are excluded).
 
 ## Offline Cache
 

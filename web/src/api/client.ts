@@ -164,7 +164,7 @@ export interface SpatialResult {
   chromosome: string
   start: number
   end: number
-  features: SpatialFeature[]
+  overlapping: SpatialFeature[]
   upstream?: SpatialFeature
   downstream?: SpatialFeature
 }

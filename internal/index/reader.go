@@ -274,10 +274,11 @@ type Region struct {
 	End   int
 }
 
-// SpatialHits is the result of a windowed spatial query: every feature whose
-// span intersects [start,end] (full-length coordinates, never clipped), plus
-// the nearest feature entirely before start and the nearest entirely after
-// end.
+// SpatialHits is the gene-centric result of a spatial query: the gene(s)
+// whose span intersects [start,end] (full-length coordinates, never
+// clipped), plus the nearest gene entirely before and after the window.
+// mRNA/CDS/exon records are excluded — they nest under genes and are
+// reachable through Transcript Lookup by gene ID.
 type SpatialHits struct {
 	Overlapping []SpatialFeat
 	Upstream    *SpatialFeat
@@ -320,16 +321,19 @@ func (r *Reader) SpatialSearch(chr string, start, end int) (*SpatialHits, error)
 	}
 	ub := lo
 
-	// One bounded backward pass from ub-1 collects overlaps (End >= start)
-	// and finds the upstream flank (max End among End < start). Scanning
-	// left only until start - spatialBackScan assumes no gene exceeds that
-	// length; features starting earlier cannot reach the window.
-	out := &SpatialHits{Overlapping: make([]SpatialFeat, 0, 8)}
+	// One bounded backward pass from ub-1 collects overlapping genes (End >=
+	// start) and the upstream flank (max End among End < start), skipping
+	// non-gene records. Scanning left only until start - spatialBackScan
+	// assumes no gene exceeds that length.
+	out := &SpatialHits{Overlapping: make([]SpatialFeat, 0, 4)}
 	bestEnd, bestIdx := -1, -1
 	limit := start - spatialBackScan
 	for i := ub - 1; i >= 0; i-- {
 		if int(recs[i].Start) < limit {
 			break
+		}
+		if r.stringAt(recs[i].TypeOffset) != "gene" {
+			continue
 		}
 		switch {
 		case int(recs[i].End) >= start:
@@ -346,10 +350,13 @@ func (r *Reader) SpatialSearch(chr string, start, end int) (*SpatialHits, error)
 		f := r.spatialFeat(recs[bestIdx])
 		out.Upstream = &f
 	}
-	// Downstream: first record with Start > end.
-	if ub < n {
-		f := r.spatialFeat(recs[ub])
-		out.Downstream = &f
+	// Downstream: first gene record after the window.
+	for i := ub; i < n; i++ {
+		if r.stringAt(recs[i].TypeOffset) == "gene" {
+			f := r.spatialFeat(recs[i])
+			out.Downstream = &f
+			break
+		}
 	}
 	return out, nil
 }

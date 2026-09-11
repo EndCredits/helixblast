@@ -50,12 +50,12 @@ export default function SpatialPanel({ result, loading, onSelectFeature }: Props
       {result && (
         <>
           <Text strong style={{ fontSize: 13 }}>
-            {result.features.length > 0
-              ? t('home.spatial.overlappingAt', { count: result.features.length, pos: `${result.start}-${result.end}` })
+            {result.overlapping.length > 0
+              ? t('home.spatial.overlappingAt', { count: result.overlapping.length, pos: `${result.start}-${result.end}` })
               : t('home.spatial.noOverlap', { pos: `${result.start}-${result.end}` })}
           </Text>
-          {result.features.map((f) => featureCard(f.id, f.type, f.start, f.end))}
-          {result.features.length > 0 && (
+          {result.overlapping.map((f) => featureCard(f.id, f.type, f.start, f.end))}
+          {result.overlapping.length > 0 && (
             <Text type="secondary" style={{ fontSize: 11 }}>
               {t('home.transcript.regions.clickId')}
             </Text>

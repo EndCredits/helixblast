@@ -174,3 +174,27 @@ func TestHandleJobCreateDedupesDatabases(t *testing.T) {
 		t.Errorf("dbs [nt,nr,nt] should dedupe to 2, got %d: %v", got, job.Databases)
 	}
 }
+
+func TestHandleSpatialWindowTooLargeReturns400(t *testing.T) {
+	s := &Server{}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/spatial?db=x&chr=c1&start=1&end=2000001", nil)
+	w := httptest.NewRecorder()
+	s.handleSpatialLookup(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for oversized window, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "too large") {
+		t.Errorf("unexpected error body: %s", w.Body.String())
+	}
+	// reversed bounds of legal width must still pass validation (db lookup
+	// then 404s on unknown db — proving the width gate let it through)
+	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/spatial?db=x&chr=c1&start=5000&end=1", nil)
+	w2 := httptest.NewRecorder()
+	func() {
+		defer func() { recover() }() // nil dbMgr after the gate is expected
+		s.handleSpatialLookup(w2, req2)
+	}()
+	if w2.Code == http.StatusBadRequest && strings.Contains(w2.Body.String(), "too large") {
+		t.Error("reversed legal-width window should not be rejected")
+	}
+}

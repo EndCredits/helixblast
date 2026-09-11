@@ -40,6 +40,9 @@ func (f *naiveReader) SpatialSearch(chr string, start, end int) (*index.SpatialH
 	minStart, downstream := 1<<60, (*index.SpatialFeat)(nil)
 	for i := range feats {
 		f := feats[i]
+		if f.Type != "gene" {
+			continue
+		}
 		switch {
 		case f.Start <= end && f.End >= start:
 			cp := f
@@ -77,12 +80,12 @@ func TestSpatial_PointQueryInclusiveBoundaries(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(res.Features) != 1 {
-			t.Errorf("pos=%d: want 1 overlapping, got %d", pos, len(res.Features))
+		if len(res.Overlapping) != 1 {
+			t.Errorf("pos=%d: want 1 overlapping, got %d", pos, len(res.Overlapping))
 		}
 	}
 	res, _ := transcript.SpatialLookup(r, "Chr1", 201, 201)
-	if len(res.Features) != 0 || res.Upstream == nil || res.Upstream.ID != "g1" {
+	if len(res.Overlapping) != 0 || res.Upstream == nil || res.Upstream.ID != "g1" {
 		t.Errorf("pos=201: want upstream g1, got %+v", res)
 	}
 }
@@ -105,8 +108,8 @@ func TestSpatial_NestedUpstreamFixed(t *testing.T) {
 	if res.Upstream == nil {
 		t.Fatal("want upstream")
 	}
-	if res.Upstream.End != 3000 {
-		t.Errorf("upstream End=%d, want 3000 (nearest by End, not innermost CDS)", res.Upstream.End)
+	if res.Upstream.ID != "g1" || res.Upstream.End != 3000 {
+		t.Errorf("upstream = %s (End %d), want g1 (End 3000): gene-filtered nearest by End", res.Upstream.ID, res.Upstream.End)
 	}
 }
 
@@ -120,11 +123,11 @@ func TestSpatial_RangePartialOverlapReturnsFullLength(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Features) != 2 {
-		t.Fatalf("want both genes overlapping the range, got %d", len(res.Features))
+	if len(res.Overlapping) != 2 {
+		t.Fatalf("want both genes overlapping the range, got %d", len(res.Overlapping))
 	}
-	if res.Features[0].Start != 1000 || res.Features[0].End != 3000 {
-		t.Errorf("g1 must keep full span 1000-3000, got %d-%d", res.Features[0].Start, res.Features[0].End)
+	if res.Overlapping[0].Start != 1000 || res.Overlapping[0].End != 3000 {
+		t.Errorf("g1 must keep full span 1000-3000, got %d-%d", res.Overlapping[0].Start, res.Overlapping[0].End)
 	}
 }
 
@@ -141,7 +144,7 @@ func TestSpatial_RangeSpansIntergenicAndGenic(t *testing.T) {
 	}}
 	res, _ := transcript.SpatialLookup(r, "Chr1", 1500, 9500)
 	ids := map[string]bool{}
-	for _, f := range res.Features {
+	for _, f := range res.Overlapping {
 		ids[f.ID] = true
 	}
 	if !ids["a"] || !ids["b"] || !ids["c"] {
@@ -161,8 +164,8 @@ func TestSpatial_ReversedRangeNormalized(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Features) != 1 {
-		t.Errorf("reversed bounds must normalize, got %d features", len(res.Features))
+	if len(res.Overlapping) != 1 {
+		t.Errorf("reversed bounds must normalize, got %d features", len(res.Overlapping))
 	}
 	if res.Start != 1500 || res.End != 2500 {
 		t.Errorf("result should carry normalized bounds, got %d-%d", res.Start, res.End)
@@ -174,7 +177,7 @@ func TestSpatial_FlanksAroundEmptyRange(t *testing.T) {
 		"Chr1": {feat(100, 200, "a", "gene"), feat(300, 400, "b", "gene"), feat(700, 800, "c", "gene")},
 	}}
 	res, _ := transcript.SpatialLookup(r, "Chr1", 500, 600)
-	if len(res.Features) != 0 || res.Upstream == nil || res.Upstream.ID != "b" ||
+	if len(res.Overlapping) != 0 || res.Upstream == nil || res.Upstream.ID != "b" ||
 		res.Downstream == nil || res.Downstream.ID != "c" {
 		t.Errorf("want upstream=b downstream=c, got %+v", res)
 	}
@@ -188,13 +191,42 @@ func TestSpatial_FlanksAroundEmptyRange(t *testing.T) {
 	}
 }
 
+func TestSpatial_GeneOnlyFiltering(t *testing.T) {
+	// Overlaps must be genes only; flanks must be genes, not the mRNA/CDS of
+	// a neighbouring locus that happens to end/start closer to the window.
+	r := &naiveReader{spatial: map[string][]index.SpatialFeat{
+		"Chr1": {
+			feat(100, 900, "g0", "gene"),
+			feat(800, 950, "g0.t1.CDS1", "CDS"), // ends nearer the window than g0
+			feat(1000, 5000, "g1", "gene"),
+			feat(1000, 5000, "g1.t1", "mRNA"),
+			feat(4200, 4900, "g1.t1.CDS1", "CDS"),
+			feat(9000, 9100, "g2.t1", "mRNA"), // starts nearer than gene g2
+			feat(9500, 9800, "g2", "gene"),
+		},
+	}}
+	res, err := transcript.SpatialLookup(r, "Chr1", 2000, 3000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Overlapping) != 1 || res.Overlapping[0].ID != "g1" {
+		t.Errorf("overlapping = %+v, want only gene g1", res.Overlapping)
+	}
+	if res.Upstream == nil || res.Upstream.ID != "g0" {
+		t.Errorf("upstream = %+v, want g0 (not its CDS)", res.Upstream)
+	}
+	if res.Downstream == nil || res.Downstream.ID != "g2" {
+		t.Errorf("downstream = %+v, want g2 (not the closer mRNA)", res.Downstream)
+	}
+}
+
 func TestSpatial_EmptyChromosomeAndMissing(t *testing.T) {
 	r := &naiveReader{spatial: map[string][]index.SpatialFeat{"ChrEmpty": {}}}
 	res, err := transcript.SpatialLookup(r, "ChrEmpty", 100, 200)
 	if err != nil {
 		t.Fatalf("empty chromosome should not error: %v", err)
 	}
-	if res.Features == nil {
+	if res.Overlapping == nil {
 		t.Error("Features must be non-nil for JSON []")
 	}
 	if _, err := transcript.SpatialLookup(r, "Nope", 1, 2); err == nil {
@@ -277,11 +309,11 @@ func TestSpatialSearch_CrossCheckRealReaders(t *testing.T) {
 }
 
 func sameSpatialResult(a, b *transcript.SpatialResult) bool {
-	if len(a.Features) != len(b.Features) {
+	if len(a.Overlapping) != len(b.Overlapping) {
 		return false
 	}
-	for i := range a.Features {
-		if a.Features[i] != b.Features[i] {
+	for i := range a.Overlapping {
+		if a.Overlapping[i] != b.Overlapping[i] {
 			return false
 		}
 	}

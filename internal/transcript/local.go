@@ -48,12 +48,12 @@ type SpatialFeature struct {
 }
 
 type SpatialResult struct {
-	Chromosome string           `json:"chromosome"`
-	Start      int              `json:"start"`
-	End        int              `json:"end"`
-	Features   []SpatialFeature `json:"features"`
-	Upstream   *SpatialFeature  `json:"upstream,omitempty"`
-	Downstream *SpatialFeature  `json:"downstream,omitempty"`
+	Chromosome  string           `json:"chromosome"`
+	Start       int              `json:"start"`
+	End         int              `json:"end"`
+	Overlapping []SpatialFeature `json:"overlapping"`
+	Upstream    *SpatialFeature  `json:"upstream,omitempty"`
+	Downstream  *SpatialFeature  `json:"downstream,omitempty"`
 }
 
 type GFF3Coords map[string]TranscriptRegions

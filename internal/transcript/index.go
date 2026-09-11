@@ -151,14 +151,18 @@ func (r *jsonIndexReader) SpatialSearch(chr string, start, end int) (*index.Spat
 	}
 	ub := lo
 
-	// single bounded backward pass: overlaps + upstream flank (see
-	// index.Reader.SpatialSearch for the windowing assumption)
-	out := &index.SpatialHits{Overlapping: make([]index.SpatialFeat, 0, 8)}
+	// single bounded backward pass: overlapping genes + upstream flank
+	// (see index.Reader.SpatialSearch for the windowing assumptions);
+	// non-gene records are excluded — flanks and overlaps are genes.
+	out := &index.SpatialHits{Overlapping: make([]index.SpatialFeat, 0, 4)}
 	bestEnd, bestIdx := -1, -1
 	limit := start - spatialBackScan
 	for i := ub - 1; i >= 0; i-- {
 		if feats[i].Start < limit {
 			break
+		}
+		if feats[i].Type != "gene" {
+			continue
 		}
 		switch {
 		case feats[i].End >= start:
@@ -179,12 +183,16 @@ func (r *jsonIndexReader) SpatialSearch(chr string, start, end int) (*index.Spat
 		}
 		out.Upstream = &f
 	}
-	if ub < n {
-		f := index.SpatialFeat{
-			Start: feats[ub].Start, End: feats[ub].End,
-			ID: feats[ub].ID, Type: feats[ub].Type,
+	// Downstream: first gene record after the window.
+	for i := ub; i < n; i++ {
+		if feats[i].Type == "gene" {
+			f := index.SpatialFeat{
+				Start: feats[i].Start, End: feats[i].End,
+				ID: feats[i].ID, Type: feats[i].Type,
+			}
+			out.Downstream = &f
+			break
 		}
-		out.Downstream = &f
 	}
 	return out, nil
 }

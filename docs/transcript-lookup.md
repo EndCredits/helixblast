@@ -241,9 +241,9 @@ When a BLAST hit lands on a chromosome database (`is_chromosome_db: true`), Heli
 }
 ```
 
-Features are sorted by `start` position on each chromosome. The lookup finds every feature whose span intersects the query range — each returned at **full indexed length, never clipped to the hit** (a hit covering only part of a gene still reports the gene's complete coordinates) — plus the nearest upstream and downstream neighbors, so even intergenic hits show flanking features with distance markers. In standard GFF3 an mRNA never stands alone: it is always nested under a gene, so clicking any flanking ID (gene, mRNA, CDS, or exon) resolves to the full gene family through Transcript Lookup.
+Features are sorted by `start` position on each chromosome. The lookup is **gene-centric**: it returns the gene(s) whose span intersects the query range — each at **full indexed length, never clipped to the hit** (a hit covering only part of a gene still reports the gene's complete coordinates) — plus the nearest upstream and downstream **genes**. mRNA/CDS/exon records are filtered out: in standard GFF3 they always nest under a gene, so clicking any returned gene ID resolves the full family through Transcript Lookup. Intergenic hits show the flanking genes with distance markers instead.
 
-This enables a complete workflow: BLAST a sequence → see where it hits on the chromosome → click "Lookup Region" or auto-resolve → see overlapping genes → click any gene/transcript/CDS ID → view its full sequence and exon structure.
+This enables a complete workflow: BLAST a sequence → see where it hits on the chromosome → auto-resolve → see the overlapping gene (or the flanking genes) → click a gene ID → view its full sequence and exon structure.
 
 ## GFF3 coordinate conventions
 

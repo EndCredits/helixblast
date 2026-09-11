@@ -132,6 +132,30 @@ export default function BlastPage() {
   // Spatial search is an auxiliary view of BLAST results: whenever a hit on a
   // chromosome database (is_chromosome_db) is selected, resolve the HSP
   // midpoint to overlapping features + flanking genes automatically.
+  // Spatial context = the best HSP's locus, extended only by other HSPs that
+  // sit within a gene-scale gap of it. Union-across-ALL-HSPs is wrong: a
+  // low-complexity query accumulates noise HSPs megabases apart on the same
+  // subject, which would blow the window up to chromosome scale (observed:
+  // 24,466 features from an 87 Mb union span). Non-transitive merge, so
+  // tandem-repeat HSP chains cannot grow the window either.
+  const hitSubjectSpan = useCallback((hit: Hit) => {
+    const GAP = 20_000
+    const norm = hit.alignments.map(a => ({
+      lo: Math.min(a.subject_start, a.subject_end),
+      hi: Math.max(a.subject_start, a.subject_end),
+    }))
+    const best = norm[0]
+    let lo = best.lo
+    let hi = best.hi
+    for (const iv of norm.slice(1)) {
+      if (iv.lo <= hi + GAP && iv.hi >= lo - GAP) {
+        lo = Math.min(lo, iv.lo)
+        hi = Math.max(hi, iv.hi)
+      }
+    }
+    return { lo, hi }
+  }, [])
+
   useEffect(() => {
     if (!selectedHit || !currentDB?.is_chromosome_db) {
       setSpatialResult(null)
@@ -141,14 +165,7 @@ export default function BlastPage() {
       setSpatialResult(null)
       return
     }
-    // Full subject span across all HSPs; BLAST minus-strand HSPs arrive with
-    // subject_start > subject_end, so normalize per HSP before min/max.
-    let lo = Infinity
-    let hi = -Infinity
-    for (const hsp of selectedHit.alignments) {
-      lo = Math.min(lo, hsp.subject_start, hsp.subject_end)
-      hi = Math.max(hi, hsp.subject_start, hsp.subject_end)
-    }
+    const { lo, hi } = hitSubjectSpan(selectedHit)
     let cancelled = false
     setSpatialLoading(true)
     fetchSpatial(currentDB.name, selectedHit.subject_id, lo, hi)
@@ -168,7 +185,7 @@ export default function BlastPage() {
     return () => {
       cancelled = true
     }
-  }, [selectedHit, currentDB])
+  }, [selectedHit, currentDB, hitSubjectSpan])
 
   const handleSubmit = useCallback(async () => {
     const err = validateFASTA(fasta)

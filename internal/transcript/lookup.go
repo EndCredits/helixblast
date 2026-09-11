@@ -93,10 +93,10 @@ func SpatialLookup(idx IndexReader, chr string, start, end int) (*SpatialResult,
 	}
 
 	result := &SpatialResult{
-		Chromosome: chr,
-		Start:      start,
-		End:        end,
-		Features:   features,
+		Chromosome:  chr,
+		Start:       start,
+		End:         end,
+		Overlapping: features,
 	}
 	if hits.Upstream != nil {
 		result.Upstream = &SpatialFeature{

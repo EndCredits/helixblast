@@ -301,6 +301,8 @@ func (s *Server) handleJobEvents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+const maxSpatialWindow = 1_000_000
+
 func (s *Server) handleSpatialLookup(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	db := q.Get("db")
@@ -339,6 +341,15 @@ func (s *Server) handleSpatialLookup(w http.ResponseWriter, r *http.Request) {
 	}
 	if start < 1 || end < 1 {
 		jsonError(w, http.StatusBadRequest, "coordinates must be positive")
+		return
+	}
+	// Defensive window cap: an unbounded range could materialize tens of
+	// thousands of features (observed: 24,466 from an 87 Mb span). Legitimate
+	// spatial context is alignment-scale; 1 Mb is orders of magnitude beyond
+	// any real BLAST hit. Width is order-agnostic (minus-strand callers may
+	// pass start > end; SpatialLookupV2 normalizes).
+	if d := end - start; d > maxSpatialWindow || -d > maxSpatialWindow {
+		jsonError(w, http.StatusBadRequest, fmt.Sprintf("spatial window too large (max %d bp)", maxSpatialWindow))
 		return
 	}
 
