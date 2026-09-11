@@ -3,12 +3,15 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/EndCredits/helixblast/internal/blast"
+	"github.com/EndCredits/helixblast/internal/config"
 	"github.com/EndCredits/helixblast/internal/worker"
 )
 
@@ -100,5 +103,31 @@ func TestHandleJobCancelUnknownIDReturns404(t *testing.T) {
 	}
 	if !strings.Contains(resp["error"], "job not found") {
 		t.Fatalf("unexpected error message: %q", resp["error"])
+	}
+}
+
+func TestHandleJobCreateDuringShutdownReturns503(t *testing.T) {
+	dir := t.TempDir()
+	dbFile := filepath.Join(dir, "databases.yaml")
+	if err := os.WriteFile(dbFile, []byte("databases:\n  - name: nt\n    type: nucleotide\n    path: /tmp/nt\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dm, err := config.NewDatabaseManager(dbFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dm.Stop()
+
+	pool := worker.NewPool(1, 1, nil, time.Hour)
+	pool.Stop()
+
+	s := &Server{pool: pool, dbMgr: dm, whitelist: blast.NewParamWhitelist([]string{"task"})}
+	body := `{"fasta":">seq1\nATGCGTAC","program":"blastn","db":"nt"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/jobs", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	s.handleJobCreate(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 during shutdown, got %d: %s", w.Code, w.Body.String())
 	}
 }

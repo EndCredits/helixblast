@@ -41,6 +41,7 @@ func TestServeFrontendFallback(t *testing.T) {
 		{"unknown extensionless path falls back", "/some/future/route", 200, true},
 		{"missing asset keeps 404", "/assets/definitely-missing.js", 404, false},
 		{"missing extensioned file keeps 404", "/favicon.ico", 404, false},
+		{"source files are never served", "/embed.go", 404, false},
 	}
 
 	for _, tt := range tests {

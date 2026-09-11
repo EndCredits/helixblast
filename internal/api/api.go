@@ -190,6 +190,10 @@ func (s *Server) handleJobCreate(w http.ResponseWriter, r *http.Request) {
 	job := worker.NewJob(req.Program, dbs, req.FastA, req.AdvancedParams)
 
 	if err := s.pool.Submit(job); err != nil {
+		if errors.Is(err, worker.ErrShuttingDown) {
+			jsonError(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		jsonError(w, http.StatusTooManyRequests, err.Error())
 		return
 	}
@@ -380,6 +384,13 @@ func serveFrontend(frontend fs.FS) http.Handler {
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upath := strings.TrimPrefix(r.URL.Path, "/")
+		// The embedded FS is built with `//go:embed *`, which also matches
+		// this package's own source files. They are never part of the app
+		// surface: refuse them outright so /embed.go cannot be served.
+		if path.Ext(upath) == ".go" {
+			http.NotFound(w, r)
+			return
+		}
 		if upath != "" {
 			if _, err := frontend.Open(upath); err != nil && path.Ext(upath) == "" {
 				r2 := new(http.Request)

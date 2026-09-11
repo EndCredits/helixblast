@@ -18,12 +18,16 @@ import (
 // registry — never submitted, or pruned after resultTTL.
 var ErrJobNotFound = errors.New("job not found")
 
+// ErrShuttingDown is returned by Submit once Stop has begun draining the pool.
+var ErrShuttingDown = errors.New("server is shutting down")
+
 type ExecFunc func(ctx context.Context, job *Job, dbName string) ([]blast.Hit, error)
 
 type Pool struct {
 	mu        sync.RWMutex
 	jobs      map[string]*Job
 	jobCh     chan *Job
+	stopped   bool // guarded by mu; set together with close(jobCh)
 	maxJobs   int
 	execFn    ExecFunc
 	resultTTL time.Duration
@@ -58,6 +62,11 @@ func NewPool(maxConcurrent int, maxQueue int, execFn ExecFunc, resultTTL time.Du
 
 func (p *Pool) Submit(job *Job) error {
 	p.mu.Lock()
+
+	if p.stopped {
+		p.mu.Unlock()
+		return ErrShuttingDown
+	}
 
 	job.SetStatus(StatusPending)
 
@@ -124,16 +133,19 @@ func (p *Pool) Cancel(id string) error {
 func (p *Pool) Stop() {
 	close(p.stopCh)
 
+	// stopped + close(jobCh) under one lock: a Submit either completes its
+	// send before Stop acquires mu, or observes stopped and refuses —
+	// sending on a closed channel becomes impossible.
 	p.mu.Lock()
+	p.stopped = true
 	for _, job := range p.jobs {
 		status := job.GetStatus()
 		if status == StatusRunning || status == StatusQueued || status == StatusPending {
 			job.Cancel()
 		}
 	}
-	p.mu.Unlock()
-
 	close(p.jobCh)
+	p.mu.Unlock()
 
 	shutdownDone := make(chan struct{})
 	go func() {

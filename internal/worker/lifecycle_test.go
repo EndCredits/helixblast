@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -109,6 +110,17 @@ func TestJobConcurrentAccess(t *testing.T) {
 
 	if job.IsCancelling() {
 		t.Error("job must not be cancelling")
+	}
+}
+
+func TestSubmitAfterStop(t *testing.T) {
+	p := NewPool(1, 2, nil, time.Hour)
+	p.Stop()
+
+	// Must return ErrShuttingDown, never panic on the closed queue channel.
+	job := NewJob("blastn", []string{"nt"}, ">seq1\nATGC", nil)
+	if err := p.Submit(job); !errors.Is(err, ErrShuttingDown) {
+		t.Errorf("Submit after Stop: got %v, want ErrShuttingDown", err)
 	}
 }
 
