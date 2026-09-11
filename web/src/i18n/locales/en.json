@@ -23,7 +23,8 @@
     "errors": {
       "selectDatabase": "Select at least one database",
       "jobSubmitted": "Job submitted ({{count}} database)",
-      "jobSubmitted_plural": "Job submitted ({{count}} databases)",
+      "jobSubmitted_one": "Job submitted ({{count}} database)",
+      "jobSubmitted_other": "Job submitted ({{count}} databases)",
       "submitFailed": "Failed to submit job",
       "enterTranscriptId": "Please enter a transcript ID",
       "dbNotAvailable": "Database not available for this hit",

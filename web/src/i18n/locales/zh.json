@@ -23,7 +23,7 @@
     "errors": {
       "selectDatabase": "请至少选择一个数据库",
       "jobSubmitted": "任务已提交（{{count}} 个数据库）",
-      "jobSubmittedPlural": "任务已提交（{{count}} 个数据库）",
+      "jobSubmitted_other": "任务已提交（{{count}} 个数据库）",
       "submitFailed": "任务提交失败",
       "enterTranscriptId": "请输入转录本 ID",
       "dbNotAvailable": "该命中结果没有可用数据库",

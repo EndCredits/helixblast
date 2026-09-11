@@ -1,0 +1,31 @@
+# VCS & tooling
+.git
+.github
+.reasonix
+.idea
+.vscode
+.DS_Store
+*.log
+
+# Local data & build artifacts (regenerated inside the image)
+data/
+embed/assets/
+embed/index.html
+web/node_modules/
+web/dist/
+web/.vite/
+worker/node_modules/
+worker/.wrangler/
+helixblast
+helixblast-prepare
+helixblast-index
+verify
+
+# Not needed by either build stage (config.yaml/databases.yaml ARE needed:
+# the runtime stage copies them from the context)
+docs/
+Makefile
+LICENSE
+LICENSE-DOC
+README.md
+worker/
