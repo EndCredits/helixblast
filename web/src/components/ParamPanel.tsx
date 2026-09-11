@@ -1,4 +1,5 @@
-import { Form, Select, Collapse, Input, Button, Space, Tag } from 'antd'
+import { useMemo } from 'react'
+import { Form, Select, Collapse, Input, Button, Space } from 'antd'
 import { useTranslation } from 'react-i18next'
 import type { Database } from '../api/client'
 import { MONO_STACK } from '../theme'
@@ -62,6 +63,10 @@ export default function ParamPanel({
   const currentTasks = taskTemplates[program] || taskTemplates.blastn
   const { t } = useTranslation()
   const defaultTask = currentTasks[0]?.label || ''
+  const dbOptions = useMemo(
+    () => databases.map((db) => ({ label: `${db.name} (${db.type})`, value: db.name })),
+    [databases],
+  )
 
   const handleProgramChange = (v: string) => {
     onProgramChange(v)
@@ -82,28 +87,11 @@ export default function ParamPanel({
         </Form.Item>
 
         <Form.Item label={t('home.paramPanel.database')} style={{ marginBottom: 0 }}>
-          {database.length > 0 && (
-            <Space wrap style={{ marginBottom: 8 }}>
-              {database.map((db) => (
-                <Tag
-                  key={db}
-                  closable
-                  color="blue"
-                  onClose={() => onDatabaseChange(database.filter((d) => d !== db))}
-                >
-                  {db}
-                </Tag>
-              ))}
-            </Space>
-          )}
           <Select
             mode="multiple"
             value={database}
             onChange={onDatabaseChange}
-            options={databases.map((db) => ({
-              label: `${db.name} (${db.type})`,
-              value: db.name,
-            }))}
+            options={dbOptions}
             style={{ width: '100%' }}
             placeholder={t('home.paramPanel.dbPlaceholder')}
             notFoundContent={t('home.paramPanel.noDb')}
