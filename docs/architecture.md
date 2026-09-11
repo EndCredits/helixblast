@@ -112,7 +112,7 @@ Builds a temporary `.bin` from JSON, then compares every entry, family, coord, a
 
 All structs include explicit Go alignment padding fields (e.g. `_ uint32` before `uint64`). This ensures `binary.Write` and `unsafe.Pointer` casts use the same byte layout. `binary.Write` outputs packed field‑by‑field; the padding fields carry zero bytes to maintain 8‑byte alignment for subsequent `uint64` fields.
 
-The format is designed for in‑process use via `mmap` + `unsafe` pointer casts — **not** for cross‑language interchange.
+The format is designed for in‑process use via `mmap` + `unsafe` pointer casts — **not** for cross‑language interchange. `Open()` validates every header‑derived section range against the file size once (overflow‑guarded arithmetic), so a truncated or hand‑corrupted `.bin` is rejected at open time and the hot lookup paths can never read out of bounds; the header is copied to the heap before any munmap path, so error formatting never dereferences unmapped memory. Corruption regressions: `internal/index/reader_corrupt_test.go` (truncation, field corruption, exhaustive header byte‑flip).
 
 ### Reader internals
 

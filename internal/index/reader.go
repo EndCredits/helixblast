@@ -38,17 +38,71 @@ func Open(path string) (*Reader, error) {
 	}
 
 	r := &Reader{data: data, f: f}
-	hdr := (*Header)(unsafe.Pointer(&data[0]))
-	if string(hdr.Magic[:]) != Magic {
+	// Copy the header to the heap before any validation/error path can
+	// munmap the backing pages — error strings must never dereference hdr.
+	r.hdr = *(*Header)(unsafe.Pointer(&data[0]))
+	if string(r.hdr.Magic[:]) != Magic {
 		r.Close()
-		return nil, fmt.Errorf("bad magic: %q", string(hdr.Magic[:]))
+		return nil, fmt.Errorf("bad magic: %q", string(r.hdr.Magic[:]))
 	}
-	if hdr.Version != Version {
+	if r.hdr.Version != Version {
 		r.Close()
-		return nil, fmt.Errorf("unsupported version: %d", hdr.Version)
+		return nil, fmt.Errorf("unsupported version: %d", r.hdr.Version)
 	}
-	r.hdr = *hdr
+	if err := r.validateSections(uint64(sz)); err != nil {
+		r.Close()
+		return nil, err
+	}
 	return r, nil
+}
+
+// validateSections checks every header-derived region against the file size
+// once, at open time, so the hot lookup paths (hash-table slices, string
+// pool, FASTA index, spatial headers) can never read out of bounds even if
+// the file was truncated or hand-corrupted. Offsets/counts come from an
+// untrusted file: all range arithmetic is overflow-guarded.
+func (r *Reader) validateSections(sz uint64) error {
+	h := &r.hdr
+	// nextPow2(count*2) must not wrap uint32 (a wrapped slot count of 0 also
+	// means division by zero in lookupHash).
+	const maxCount = 1 << 30
+	if h.EntryCount > maxCount || h.FamilyCount > maxCount || h.CoordCount > maxCount {
+		return fmt.Errorf("corrupt index: record count overflow")
+	}
+
+	type section struct {
+		name string
+		off  uint64
+		size uint64
+	}
+	sections := []section{
+		{"entries", h.EntriesOffset,
+			uint64(nextPow2(h.EntryCount*2))*HashSlotSize + uint64(h.EntryCount)*EntryRecordSize},
+		{"families", h.FamiliesOffset,
+			uint64(nextPow2(h.FamilyCount*2))*HashSlotSize + uint64(h.FamilyCount)*FamilyRecordSize},
+		{"coords", h.CoordsOffset,
+			uint64(nextPow2(h.CoordCount*2))*HashSlotSize + uint64(h.CoordCount)*CoordRecordSize},
+		{"spatial", h.SpatialOffset, 4 + uint64(h.SpatialCount)*SpatialHeaderSize},
+		{"fasta_index", h.FastaIdxOffset, 4 + uint64(h.FastaChrCount)*FastaIndexEntrySize},
+		{"string pool", h.StringPoolOff, h.StringPoolSize},
+	}
+	for _, s := range sections {
+		if s.off > sz || s.size > sz-s.off {
+			return fmt.Errorf("corrupt index: %s section out of bounds", s.name)
+		}
+	}
+
+	// Per-chromosome spatial feature arrays (the header table itself is
+	// covered above; record payloads are referenced by absolute offset).
+	off := h.SpatialOffset + 4
+	for i := uint32(0); i < h.SpatialCount; i++ {
+		sh := (*SpatialHeader)(unsafe.Pointer(&r.data[off]))
+		if sh.DataOffset > sz || uint64(sh.FeatureCount)*SpatialFeatureRecSize > sz-sh.DataOffset {
+			return fmt.Errorf("corrupt index: spatial feature data out of bounds")
+		}
+		off += SpatialHeaderSize
+	}
+	return nil
 }
 
 func (r *Reader) Close() error {
