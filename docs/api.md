@@ -61,7 +61,7 @@ Content-Type: application/json
 
 → 201
 {
-  "job_id": "hxb-8f3a9c1d",
+  "job_id": "hxb-8f3a9c1d5e7b2046af01be39c72d5408",
   "status": "queued",
   "queue_pos": 3
 }
@@ -85,14 +85,14 @@ Returns `429 Too Many Requests` when the job queue is full.
 ```
 GET /api/v1/jobs/{id}
 → {
-    "job_id": "hxb-8f3a9c1d",
+    "job_id": "hxb-8f3a9c1d5e7b2046af01be39c72d5408",
     "status": "success",
     "program": "blastn",
     "database": "nr,nt",
     "created_at": "...",
     "updated_at": "...",
         "result": {
-      "job_id": "hxb-8f3a9c1d",
+      "job_id": "hxb-8f3a9c1d5e7b2046af01be39c72d5408",
       "status": "success",
       "database": "nr,nt",
       "databases": ["nr", "nt"],

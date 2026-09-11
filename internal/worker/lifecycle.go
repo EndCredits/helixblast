@@ -59,8 +59,11 @@ type Job struct {
 	subs       map[chan struct{}]struct{}
 }
 
+// NewJobID returns a 128-bit random hex ID. The job ID is the only
+// capability token guarding a job (endpoints have no auth), so it must be
+// unguessable and collision-free at any realistic scale.
 func NewJobID() string {
-	b := make([]byte, 4)
+	b := make([]byte, 16)
 	rand.Read(b)
 	return "hxb-" + hex.EncodeToString(b)
 }
