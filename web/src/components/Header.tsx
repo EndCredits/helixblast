@@ -92,7 +92,6 @@ export default function Header() {
                   ` · ${t('header.statusLine', {
                     version: health.version,
                     workers: t('common.workers', { count: health.concurrent_capacity }),
-                    storage: health.storage_backend,
                   })}`}
               </Text>
             </Space>

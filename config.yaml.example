@@ -1,9 +1,7 @@
 server:
   port: 8080
 
-storage:
-  type: local
-  data_dir: ./data
+jobs:
   result_ttl_hours: 24
 
 blast:

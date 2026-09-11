@@ -10,7 +10,7 @@ import (
 
 type Config struct {
 	Server   ServerConfig   `yaml:"server"`
-	Storage  StorageConfig  `yaml:"storage"`
+	Jobs     JobsConfig     `yaml:"jobs"`
 	Blast    BlastConfig    `yaml:"blast"`
 	Database DatabaseConfig `yaml:"database"`
 }
@@ -19,10 +19,12 @@ type ServerConfig struct {
 	Port int `yaml:"port"`
 }
 
-type StorageConfig struct {
-	Type           string `yaml:"type"`
-	DataDir        string `yaml:"data_dir"`
-	ResultTTLHours int    `yaml:"result_ttl_hours"`
+// JobsConfig governs the in-memory job registry. Results are never persisted
+// server-side (IndexedDB-first architecture): a terminal job lives in memory
+// for ResultTTLHours, then the registry pruner drops it and its ID resolves
+// to 404.
+type JobsConfig struct {
+	ResultTTLHours int `yaml:"result_ttl_hours"`
 }
 
 type BlastConfig struct {
@@ -67,14 +69,8 @@ func (c *Config) applyDefaults() {
 	if c.Server.Port == 0 {
 		c.Server.Port = 8080
 	}
-	if c.Storage.Type == "" {
-		c.Storage.Type = "local"
-	}
-	if c.Storage.DataDir == "" {
-		c.Storage.DataDir = "./data"
-	}
-	if c.Storage.ResultTTLHours == 0 {
-		c.Storage.ResultTTLHours = 24
+	if c.Jobs.ResultTTLHours == 0 {
+		c.Jobs.ResultTTLHours = 24
 	}
 	if c.Blast.MaxJobs == 0 {
 		c.Blast.MaxJobs = 20
@@ -91,14 +87,8 @@ func (c *Config) validate() error {
 	if c.Server.Port < 1 || c.Server.Port > 65535 {
 		return fmt.Errorf("invalid port: %d", c.Server.Port)
 	}
-	if c.Storage.Type == "s3" {
-		return fmt.Errorf("storage type 's3' is no longer supported — genome and index data are served via Cloudflare Worker + R2; set storage.type to 'local'")
-	}
-	if c.Storage.Type != "local" {
-		return fmt.Errorf("invalid storage type: %s (must be 'local')", c.Storage.Type)
-	}
-	if c.Storage.ResultTTLHours < 1 {
-		return fmt.Errorf("result_ttl_hours must be at least 1")
+	if c.Jobs.ResultTTLHours < 1 {
+		return fmt.Errorf("jobs.result_ttl_hours must be at least 1")
 	}
 	if c.Blast.MaxJobs < 1 {
 		return fmt.Errorf("blast.max_jobs must be at least 1")

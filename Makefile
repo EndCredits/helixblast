@@ -23,7 +23,6 @@ clean:
 	rm -f helixblast
 	rm -rf embed/assets embed/index.html
 	rm -rf web/dist/
-	rm -rf data/
 
 lint: lint-go lint-frontend
 

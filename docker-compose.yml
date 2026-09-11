@@ -6,11 +6,7 @@ services:
     volumes:
       - ./config.yaml:/etc/helixblast/config.yaml:ro
       - ./databases.yaml:/etc/helixblast/databases.yaml:ro
-      - helixblast_data:/data
       - /var/blast/db:/var/blast/db:ro
     environment:
       - TZ=UTC
     restart: unless-stopped
-
-volumes:
-  helixblast_data:

@@ -17,7 +17,7 @@ HelixBLAST compiles to a **single static binary** (~13MB). The React frontend is
 Job state lives in memory (Go maps + channels). No Redis, no PostgreSQL, no SQLite. This is intentional:
 
 - **Anonymous access**: No user accounts to persist
-- **Ephemeral data**: Results auto-deleted after 24h — no long-term storage needed
+- **Ephemeral data**: Results live in memory for `jobs.result_ttl_hours` (default 24h), then the registry pruner drops them — no server-side persistence at all; durability is the browser's job (IndexedDB)
 - **Single-server**: No distributed coordination required
 
 The trade-off: server restart loses job history. Acceptable for the use case (ad-hoc analysis, no archival requirements).
@@ -198,7 +198,7 @@ Submit → Pending → Queued → Running → Success / Failed
 
 **Timeout**: Each job has a 2-hour `context.WithTimeout`. BLAST receives the context and is killed by the OS when it expires.
 
-**Cleanup**: A janitor goroutine runs every 10 minutes, scanning for expired job files in the local store older than `result_ttl_hours`. The worker pool runs a second goroutine on the same cadence that prunes terminal-state jobs from the in-memory registry once they pass `result_ttl_hours`, bounding registry memory to ~24h of job history and keeping queue-position rescans O(recent jobs) instead of O(all-time jobs).
+**Cleanup**: A pruner goroutine in the worker pool runs every 10 minutes, removing terminal-state jobs from the in-memory registry once they pass `jobs.result_ttl_hours`. This bounds registry memory to ~24h of job history and keeps queue-position rescans O(recent jobs) instead of O(all-time jobs). There is no storage janitor: results are never persisted server-side (the former `internal/storage` + `internal/janitor` subsystem was removed as dead weight — see configuration → "Why there is no server-side storage layer").
 
 ## SSE streaming
 
@@ -230,7 +230,7 @@ Graceful shutdown on SIGINT/SIGTERM (order as implemented in `cmd/server/main.go
 
 1. HTTP server graceful shutdown (5s timeout) — stop accepting, drain in-flight requests
 2. `pool.Stop()`: cancel all running/queued jobs, close the queue, wait for workers to finish (30s timeout, then force)
-3. Exit via `os.Exit(0)` — this skips the deferred janitor/fsnotify stops; harmless at process end, but worth cleaning up if shutdown ever needs to flush state
+3. Exit via `os.Exit(0)` — this skips the deferred fsnotify stop; harmless at process end, but worth cleaning up if shutdown ever needs to flush state
 
 ## Frontend
 

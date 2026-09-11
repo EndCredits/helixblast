@@ -1,7 +1,6 @@
 package config
 
 import (
-	"strings"
 	"os"
 	"testing"
 )
@@ -10,8 +9,7 @@ func TestLoadValidConfig(t *testing.T) {
 	tmp := writeTempYAML(t, `
 server:
   port: 9090
-storage:
-  type: local
+jobs:
   result_ttl_hours: 48
 blast:
   max_jobs: 10
@@ -29,11 +27,8 @@ database:
 	if cfg.Server.Port != 9090 {
 		t.Errorf("expected port 9090, got %d", cfg.Server.Port)
 	}
-	if cfg.Storage.Type != "local" {
-		t.Errorf("expected local storage, got %s", cfg.Storage.Type)
-	}
-	if cfg.Storage.ResultTTLHours != 48 {
-		t.Errorf("expected TTL 48, got %d", cfg.Storage.ResultTTLHours)
+	if cfg.Jobs.ResultTTLHours != 48 {
+		t.Errorf("expected TTL 48, got %d", cfg.Jobs.ResultTTLHours)
 	}
 }
 
@@ -49,11 +44,8 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Server.Port != 8080 {
 		t.Errorf("expected default port 8080, got %d", cfg.Server.Port)
 	}
-	if cfg.Storage.Type != "local" {
-		t.Errorf("expected default local storage, got %s", cfg.Storage.Type)
-	}
-	if cfg.Storage.ResultTTLHours != 24 {
-		t.Errorf("expected default TTL 24, got %d", cfg.Storage.ResultTTLHours)
+	if cfg.Jobs.ResultTTLHours != 24 {
+		t.Errorf("expected default TTL 24, got %d", cfg.Jobs.ResultTTLHours)
 	}
 	if cfg.Blast.MaxJobs != 20 {
 		t.Errorf("expected default max_jobs 20, got %d", cfg.Blast.MaxJobs)
@@ -63,32 +55,26 @@ func TestLoadDefaults(t *testing.T) {
 	}
 }
 
-func TestLoadInvalidStorage(t *testing.T) {
+func TestLoadInvalidTTL(t *testing.T) {
 	tmp := writeTempYAML(t, `
-storage:
-  type: unknown
+jobs:
+  result_ttl_hours: 0
 `)
 	defer os.Remove(tmp)
 
-	_, err := Load(tmp)
-	if err == nil {
-		t.Error("expected error for invalid storage type")
+	// 0 is indistinguishable from unset in YAML and gets the default; use a
+	// negative value to exercise validation.
+	if _, err := Load(tmp); err != nil {
+		t.Fatalf("zero should fall back to default, got: %v", err)
 	}
-}
 
-func TestLoadS3StorageRejected(t *testing.T) {
-	tmp := writeTempYAML(t, `
-storage:
-  type: s3
+	tmp2 := writeTempYAML(t, `
+jobs:
+  result_ttl_hours: -5
 `)
-	defer os.Remove(tmp)
-
-	_, err := Load(tmp)
-	if err == nil {
-		t.Fatal("expected error for removed s3 storage type")
-	}
-	if !strings.Contains(err.Error(), "no longer supported") {
-		t.Errorf("expected migration hint in error, got: %v", err)
+	defer os.Remove(tmp2)
+	if _, err := Load(tmp2); err == nil {
+		t.Error("expected error for negative result_ttl_hours")
 	}
 }
 

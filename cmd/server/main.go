@@ -14,8 +14,6 @@ import (
 	"github.com/EndCredits/helixblast/internal/api"
 	"github.com/EndCredits/helixblast/internal/blast"
 	"github.com/EndCredits/helixblast/internal/config"
-	"github.com/EndCredits/helixblast/internal/janitor"
-	"github.com/EndCredits/helixblast/internal/storage"
 	"github.com/EndCredits/helixblast/internal/worker"
 )
 
@@ -37,14 +35,6 @@ func main() {
 	if resources.Degraded {
 		logger.Printf("WARNING: System running in degraded mode: %s", resources.DegradedReason)
 	}
-
-	logger.Printf("Storage backend: %s", cfg.Storage.Type)
-
-	localStore, err := storage.NewLocalStore(cfg.Storage.DataDir)
-	if err != nil {
-		logger.Fatalf("Failed to create local store: %v", err)
-	}
-	var store storage.Store = localStore
 
 	blastPath, err := blast.ResolveBlastPath(cfg.Blast.Path)
 	if err != nil {
@@ -118,14 +108,10 @@ func main() {
 		})
 	}
 
-	resultTTL := time.Duration(cfg.Storage.ResultTTLHours) * time.Hour
+	resultTTL := time.Duration(cfg.Jobs.ResultTTLHours) * time.Hour
 	pool := worker.NewPool(resources.ActualConcurrent, cfg.Blast.MaxJobs, execFn, resultTTL)
 	logger.Printf("Worker pool: %d concurrent workers, %d max queue, registry TTL %dh",
-		resources.ActualConcurrent, cfg.Blast.MaxJobs, cfg.Storage.ResultTTLHours)
-
-	jan := janitor.New(store, cfg.Storage.ResultTTLHours)
-	jan.Start()
-	defer jan.Stop()
+		resources.ActualConcurrent, cfg.Blast.MaxJobs, cfg.Jobs.ResultTTLHours)
 
 	srv := api.NewServer(cfg, pool, dm, whitelist)
 

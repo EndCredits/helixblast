@@ -13,24 +13,20 @@ server:
 
 The single HTTP port for both API and embedded frontend. No separate dev/prod ports — the Go binary serves everything.
 
-### storage
+### jobs
 
 ```yaml
-storage:
-  type: local           # local
-  data_dir: ./data
+jobs:
   result_ttl_hours: 24
 ```
 
 | Field | Default | Why |
 |-------|---------|-----|
-| `type` | `local` | Local disk. S3-compatible backends were removed — see note below |
-| `data_dir` | `./data` | Where job results are stored on disk |
-| `result_ttl_hours` | `24` | Job results are ephemeral — auto-deleted after this period. Governs all expiry surfaces at once: stored files (janitor) and the in-memory job registry (terminal-state jobs pruned, IDs then resolve to 404). No long-term archive |
+| `result_ttl_hours` | `24` | How long a terminal job stays queryable in the in-memory registry before pruning; after that its ID resolves to `404`. Results are ephemeral by design — the server never persists them to disk (see below) |
 
-### Why there is no S3 backend
+### Why there is no server-side storage layer
 
-Earlier versions could keep job artifacts on S3-compatible storage (MinIO/R2/AWS). That path was retired: genome FASTA and GFF3 indexes are now served through the **Cloudflare Worker + R2** pipeline (see [Transcript Lookup](transcript-lookup.md)) — byte-range random reads over the S3 API performed too poorly to be worth optimizing, and job results themselves never touch disk anymore under the IndexedDB-first architecture. Setting `type: s3` now fails config validation with a migration hint.
+Earlier versions shipped a `storage` abstraction (local disk + S3/MinIO backends, presigned URLs, a janitor sweeping expired artifacts). It was built for a plan where BLAST results and genome/index files lived on object storage read directly by the server. That plan is gone: results are delivered over SSE and persisted client-side in IndexedDB, and genome FASTA / GFF3 indexes are read from the local filesystem or served through the **Cloudflare Worker + R2** pipeline (see [Transcript Lookup](transcript-lookup.md)) — byte-range random reads over the S3 API performed too poorly to optimize. The whole subsystem had zero live callers, so it was removed; the only surviving knob is `jobs.result_ttl_hours`, which now governs the in-memory registry alone.
 
 ### blast
 

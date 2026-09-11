@@ -97,7 +97,6 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"status":              status,
 		"version":             s.version,
 		"concurrent_capacity": resources.ActualConcurrent,
-		"storage_backend":     s.config.Storage.Type,
 	})
 }
 

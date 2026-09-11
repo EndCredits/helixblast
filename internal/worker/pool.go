@@ -170,7 +170,7 @@ func (p *Pool) pruneLoop() {
 
 // pruneExpired removes terminal-state jobs whose last update is older than
 // resultTTL. It bounds the in-memory registry so completed jobs do not
-// accumulate forever; the cadence matches the storage janitor.
+// accumulate forever; pruned on a fixed 10-minute cadence.
 func (p *Pool) pruneExpired(now time.Time) int {
 	cutoff := now.Add(-p.resultTTL)
 

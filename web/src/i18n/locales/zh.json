@@ -12,7 +12,7 @@
     "settings": "设置"
   },
   "header": {
-    "statusLine": "v{{version}} | {{workers}} | {{storage}}"
+    "statusLine": "v{{version}} | {{workers}}"
   },
   "home": {
     "validation": {

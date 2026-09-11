@@ -30,7 +30,6 @@ embed/index.html
 Thumbs.db
 
 # Data
-data/
 *.db
 
 # Configs

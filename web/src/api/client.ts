@@ -12,7 +12,6 @@ export interface HealthInfo {
   status: string
   version: string
   concurrent_capacity: number
-  storage_backend: string
 }
 
 export interface JobItem {
