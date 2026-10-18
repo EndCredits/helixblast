@@ -300,6 +300,8 @@ func TestReverseComplement_IUPAC(t *testing.T) {
 		"ACGTN":  "NACGT",
 		"ACGT-":  "-ACGT",
 		"AAAAAC": "GTTTTT",
+		"rykm":   "kmry",
+		"acgu":   "acgt",
 	}
 	for in, want := range cases {
 		if got := reverseComplement(in); got != want {

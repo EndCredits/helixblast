@@ -484,7 +484,10 @@ func reverseComplement(seq string) string {
 		'N': 'N', 'n': 'n',
 		'R': 'Y', 'Y': 'R', 'S': 'S', 'W': 'W',
 		'K': 'M', 'M': 'K', 'B': 'V', 'V': 'B',
-		'D': 'H', 'H': 'D',
+		'D': 'H', 'H': 'D', 'U': 'A', 'u': 'a',
+		'r': 'y', 'y': 'r', 's': 's', 'w': 'w',
+		'k': 'm', 'm': 'k', 'b': 'v', 'v': 'b',
+		'd': 'h', 'h': 'd',
 	}
 
 	runes := []rune(seq)
