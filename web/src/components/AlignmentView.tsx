@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { DownloadOutlined, SearchOutlined } from '@ant-design/icons'
 import type { Hit } from '../api/client'
 import SequenceText from '../lib/sequenceColor'
+import { advancePosition } from '../lib/alignmentPositions'
 import { useCodePanelStyle } from '../themeMode'
 
 const { Text } = Typography
@@ -41,6 +42,8 @@ function buildWrappedAlignment(hit: Hit): AlignmentBlock[] {
 
     let qPos = hsp.query_start
     let sPos = hsp.subject_start
+    const qDirection: 1 | -1 = hsp.query_start <= hsp.query_end ? 1 : -1
+    const sDirection: 1 | -1 = hsp.subject_start <= hsp.subject_end ? 1 : -1
 
     for (let offset = 0; offset < q.length; offset += LINE_LEN) {
       const qChunk = q.slice(offset, offset + LINE_LEN)
@@ -59,17 +62,17 @@ function buildWrappedAlignment(hit: Hit): AlignmentBlock[] {
         }
       }
 
-      const qEnd = qPos + qChunk.replace(/-/g, '').length - 1
-      const sEnd = sPos + sChunk.replace(/-/g, '').length - 1
+      const qSpan = advancePosition(qPos, qDirection, qChunk)
+      const sSpan = advancePosition(sPos, sDirection, sChunk)
 
       queryLines.push(qChunk)
       matchLines.push(match)
       subjectLines.push(sChunk)
-      queryPositions.push(`${qPos}-${qEnd}`)
-      subjectPositions.push(`${sPos}-${sEnd}`)
+      queryPositions.push(qSpan.label)
+      subjectPositions.push(sSpan.label)
 
-      qPos = qEnd + 1
-      sPos = sEnd + 1
+      qPos = qSpan.next
+      sPos = sSpan.next
     }
 
     blocks.push({
