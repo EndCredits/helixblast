@@ -9,6 +9,7 @@ Notable changes to HelixBLAST. The project does not publish versioned releases y
 - Minus-strand transcript lookups now extract the 5 kb upstream flank from the high-coordinate side (`[start, end + 5000]`) instead of the low-coordinate side. `scan_end` reports the last base actually extracted, including at chromosome boundaries.
 - The transcript page slices upstream, gene body, mRNA, and CDS from the returned sequence using the strand. Exons and CDS are spliced in transcript order, descending by genomic start on the minus strand.
 - Alignment position labels step down for minus-strand query and subject HSPs instead of counting upward.
+- FASTA header matching now treats `\r` as a terminator in the linear path, so CRLF files work without a `fasta_index` offset. Reverse-complement handling now covers lowercase IUPAC ambiguity codes and uracil.
 - Added Go coverage for local and Worker minus-strand windows and Node tests for transcript region slicing and alignment position stepping.
 
 ## 2026-09-11

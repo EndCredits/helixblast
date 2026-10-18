@@ -135,7 +135,7 @@ Behavior:
 - A requested range past the end of a record returns the available partial sequence.
 - A range that starts past the last base of a record returns an error instead of an empty string.
 - A `fasta_dir` file is treated as a single record. A second header ends extraction.
-- On the offset path, a trailing `\r` in the header is stripped before the name comparison. The linear path compares the header text as read, so a CRLF multi-FASTA without a usable offset may fail to match the chromosome name.
+- A trailing `\r` in the header is treated as a terminator on both the offset and linear paths, so a CRLF FASTA file matches the chromosome name without a `fasta_index` offset.
 - For a minus-strand feature, the server reverse-complements the extracted window.
 
 The extraction window depends on the strand:
