@@ -1,368 +1,442 @@
 # Architecture
 
-## Single binary
+## Runtime shape
 
-HelixBLAST compiles to a **single static binary** (~13MB). The React frontend is embedded at build time via `//go:embed`, served from memory with zero disk I/O. No Nginx, no CDN, no external assets.
+HelixBLAST is one Go HTTP server with an embedded React single-page application. The build copies the frontend bundle into `embed/`, and `//go:embed` puts it in the binary. The server reads no frontend files from disk at runtime.
+
+The host must provide NCBI BLAST+. The server starts BLAST+ as a child process and does not bundle the BLAST+ executables or databases.
+
+The app shell and JavaScript bundle are self-contained. The UI loads Google Sans Flex, Noto Sans SC, and Fira Code from `fonts.googleapis.com`, so a host without internet access falls back to the system font stack.
 
 ## Why Go
 
-- **os/exec**: Native process management for BLAST+ — process isolation, signal handling, stdout/stderr capture
-- **bufio**: Tabular BLAST output parsed line-by-line with `bufio.Scanner` (stdout is fully buffered in memory; size is bounded by the 20-hits-per-database parser cap)
-- **chi/v5**: Zero-allocation radix tree router, <2MB memory footprint
-- **Goroutines**: Lightweight concurrency for worker pool — fixed-size goroutine pool with channel-based job queue
-- **Single binary**: Cross-compilation to any target (linux/amd64, darwin/arm64, etc.)
+- `os/exec` and `context` start BLAST+, capture stdout and stderr, and terminate the process on cancel or timeout.
+- `bufio` parses tabular BLAST output. The full stdout is buffered before parsing. `-max_target_seqs 5000` limits subject sequences; the 20-hit cap is applied after parsing.
+- `chi` provides the route tree for the API and the static fallback.
+- A fixed set of goroutines consumes jobs from a buffered channel.
+- The server cross-compiles to Linux and macOS targets without CGO.
 
-## Why no database
+## Why there is no database
 
-Job state lives in memory (Go maps + channels). No Redis, no PostgreSQL, no SQLite. This is intentional:
+Job state lives in Go maps and channels. There is no Redis, PostgreSQL, or SQLite.
 
-- **Anonymous access**: No user accounts to persist
-- **Ephemeral data**: Results live in memory for `jobs.result_ttl_hours` (default 24h), then the registry pruner drops them — no server-side persistence at all; durability is the browser's job (IndexedDB)
-- **Single-server**: No distributed coordination required
+- There are no user accounts, so there is no durable ownership model.
+- Results are ephemeral. The browser's IndexedDB is the durable copy.
+- A single server does not need distributed coordination.
 
-The trade-off: server restart loses job history. Acceptable for the use case (ad-hoc analysis, no archival requirements).
+The trade-off is that a restart loses every job record and every result that has not reached a browser. That fits ad-hoc analysis, not archival use.
 
-## Index: Binary vs JSON
+## Index formats
 
-HelixBLAST supports two GFF3 index formats, auto-detected at runtime via `transcript.LoadIndexAuto()`:
+HelixBLAST reads two GFF3 index formats. `transcript.LoadIndexAuto` chooses between them at runtime.
 
 | | JSON (`.json.gz`) | Binary (`.bin`) |
 |---|---|---|
-| Lookup | Go `map[string]T` O(1) | xxh3 hash table, linear probing, O(1) |
-| Load | Full `json.Decode` on first request → decoded reader **cached by path** | `mmap` per request → OS pages in on demand |
-| Cache | Yes — invalidated on mtime/size change; `Close()` is a no-op so shared readers are safe | No — open is O(1) (~µs); each reader owns an mmap that must be closed |
-| Resident memory | ≈ 0.4 KB live heap per index entry — structurally ~2–3× the equivalent `.bin` file size (Go maps/pointers/string headers vs packed fixed-record layout); one cached copy per configured JSON index | ~0 between requests; during a request only the pages the query touched, bounded by the `.bin` file size, released on close |
-| File size | 15–30 MB (gzipped) | 22–35 MB (uncompressed) — both scale with annotation size; the gz↔bin ratio depends on content entropy, so only the decoded-heap↔bin ratio (~2–3×) is structural |
-| Build tool | `helixblast-index --json` (intermediate/debug output only) | `helixblast-index` (Go, GFF3+FASTA → `.bin` **directly** — the recommended path) |
+| Lookup | Go map, O(1) | xxh3 hash table, O(1) |
+| Load | Full `json.Decode` on the first request, then cached by path | `mmap` per request, pages in on demand |
+| Cache | Yes, invalidated by modification time and size. `Close` is a no-op, so a shared reader stays valid. | No. Opening costs tens of microseconds, and each reader owns an mmap that must be closed. |
+| Resident memory | About 0.4 KB of live heap per entry, or 2 to 3 times the equivalent `.bin` file size. One cached copy per configured JSON index. | No Go heap cost between requests. During a request, the resident set is limited to the pages the query touches and is released on close. |
+| File size | 15 to 30 MB gzipped in the calibration index | 22 to 35 MB uncompressed in the calibration index |
+| Build tool | `helixblast-index --json` for an intermediate or debug copy | `helixblast-index` directly from GFF3 and FASTA |
 
-Design intent: the binary format exists for memory-constrained hosts (mmap trades disk-backed pages for RAM); the JSON format implies a host with RAM headroom, so one resident decoded copy per index is the right trade. Absolute sizes scale with the annotation, so the invariants are expressed as ratios (calibration run: synthetic 200K-entry index, Apple M1; reproducible via `internal/transcript/memory_test.go` and `bench_test.go`):
+The numbers come from a synthetic 200K-entry index on an Apple M1. They scale with the annotation, so the useful invariants are ratios rather than absolute sizes:
 
-- **JSON resident cost** ≈ 0.4 KB per index entry ≈ 2–3× the equivalent `.bin` file size
-- **Uncached JSON load** ≈ 4× the resident size in allocation churn, per request — and ~5 orders of magnitude slower than a cache hit (579 ms vs 4.5 µs)
-- **Cache hit** is O(1) in index size: one `stat` + map lookup
-- **Binary** carries no Go-heap cost at all; its memory footprint is page-granular and self-releasing
+- JSON resident cost is about 0.4 KB per entry, or 2 to 3 times the binary file size.
+- An uncached JSON load allocates about 4 times the resident size per request. On the calibration index, that was 579 ms and 302 MB of allocation churn.
+- A JSON cache hit is O(1) in index size: one `stat` and a map lookup. The same calibration measured 4.5 microseconds.
+- A binary index adds no decoded full-index heap. Its memory is page-granular and self-releasing.
 
-A host should build `.bin` directly from GFF3 + FASTA with `helixblast-index` unless JSON is specifically required (inspection, `verify` equivalence checks, or a legacy pipeline that only has the JSON left) — that is precisely what the binary format is for.
+Use a `.bin` built directly from GFF3 and FASTA unless you need JSON for inspection, for the `verify` tool, or for a legacy pipeline that only has JSON left.
 
-### `LoadIndexAuto` auto‑detection
+The binary format is version 2. Version 1 indexes used FNV-1a and must be rebuilt.
 
+## `LoadIndexAuto`
+
+```text
+path ends in .bin
+  -> index.Open(path)
+
+path is JSON (for example refseq.index.json.gz)
+  -> if refseq.index.bin exists, index.Open(refseq.index.bin)
+  -> otherwise, loadJSONCached(path)
 ```
-databases.yaml: transcript.index_path = refseq.index.json.gz
 
-   1. Check refseq.index.bin exists  →  mmap + hash table (per request, uncached)
-   2. Fallback                         →  cached json.Decode reader
-```
+The JSON cache is a process-global map keyed by path. Each entry has its own mutex, stores the file's modification time and size, and reloads when either changes. The cache has no eviction. `jsonIndexReader.Close` is a no-op, so callers can close a shared reader safely.
 
-No config change or restart required. Place `.bin` alongside the existing `.json.gz` — the next request picks it up (`LoadIndexAuto` stats the sibling path every call).
+Binary readers are deliberately not cached. Opening one is cheap, and each reader must own and release its own mmap.
 
-### `helixblast-index` (GFF3 + FASTA → binary, the default path)
+Both readers implement `transcript.IndexReader` and duplicate the 8 MB `spatialBackScan` constant. Keep the two constants in sync.
+
+## Build indexes
+
+### `helixblast-index`
 
 ```bash
 make build-index
 ./helixblast-index --gff3 annotations.gff3 --fasta genome.fa --out refseq.index.bin
-# optional: --json refseq.index.json.gz also keeps an intermediate JSON for debugging/verify
+# Optional intermediate JSON:
+./helixblast-index --gff3 annotations.gff3 --fasta genome.fa \
+  --out refseq.index.bin --json refseq.index.json.gz
 ```
 
-Parses GFF3 + genome FASTA (replacing the former Node.js `prepare.js`) and writes the **binary index directly — this is the recommended way to produce a runtime index**. Point `transcript.index_path` at the `.bin`; there is no need to involve JSON at runtime. Semantics match the old pipeline: Parent-chain coordinate resolution, gene families, per-transcript exon/CDS coords, spatial features, and FASTA byte offsets.
+This tool replaces the former Node.js `prepare.js`. It parses GFF3 and genome FASTA and writes the binary index directly. The index contains:
 
-### `helixblast-prepare` (JSON → bin, legacy/convenience)
+- `entries`: every GFF3 ID whose Parent chain resolves to a gene, mRNA, or transcript, plus every `Name` alias. Gene, mRNA, and transcript rows use their own coordinates; child features use the nearest annotated ancestor.
+- `families`: gene to transcript, CDS, and exon ID lists.
+- `coords`: exon and CDS coordinate arrays per transcript.
+- `fasta_index`: byte offset of each chromosome header in the genome FASTA.
+- `spatial`: per-chromosome features sorted by start. The index stores gene, mRNA, CDS, and exon records; the spatial API filters the result to genes.
+
+Point `transcript.index_path` at the `.bin`. The JSON file is only an intermediate.
+
+### `helixblast-prepare`
 
 ```bash
-go build -o helixblast-prepare ./cmd/prepare
+make build-prepare
 ./helixblast-prepare --json refseq.index.json.gz --out refseq.index.bin
 ```
 
-Converts an **existing** JSON index (e.g. from a legacy pipeline that no longer has the GFF3 source) into the mmap binary. Prefer `helixblast-index` straight from GFF3 + FASTA when the sources are available; use this tool only when JSON is all you have. The binary is uncompressed (~same size as decompressed JSON), but loads with zero decode cost.
+This converts an existing JSON index when the GFF3 source is gone. Prefer `helixblast-index` when the sources are available. The binary is uncompressed, roughly the size of the decoded JSON, and loads without a decode step.
 
 ### `verify`
 
 ```bash
-go run ./cmd/verify --json refseq.index.json.gz
-# → VERIFIED: JSON and binary indices produce identical results.
+make build-verify
+./verify --json refseq.index.json.gz
+# VERIFIED: JSON and binary indices produce identical results.
 ```
 
-Builds a temporary `.bin` from JSON, then compares every entry, family, coord, and Fasta‑index field. Reports exact mismatches.
+`verify` builds a temporary `.bin` from the JSON index and compares every entry, family, coordinate array, and FASTA offset. It does not compare spatial records.
 
-## Binary Index Format
+## Binary index format
 
 ### Layout
 
 | Offset | Content | Size |
-|--------|---------|------|
-| 0 | `Header` — magic `HXBI`, version=2, entry/family/coord/spatial counts, section offsets, string pool off/size | 88 B |
-| `hdr.EntriesOffset` | Entry hash table: `{hash uint64, val uint64}` × `nextPow2(entryCount×2)` | slotCount×16 B |
-| … after hash | Entry records: `{chr_off, start, end, strand_off, type_off, gene_off}` × entryCount | entryCount×24 B |
-| `hdr.FamiliesOffset` | Family hash table | slotCount×16 B |
-| … after hash | Family records: `{tx_count, cds_count, exon_count, _, data_off}` × familyCount | familyCount×24 B |
-| … after records | Family string‑ref data: `uint32` arrays (transcript IDs, CDS IDs, exon IDs) | variable |
-| `hdr.CoordsOffset` | Coord hash table + records + exon/CDS `{start, end}` pair arrays | variable |
-| `hdr.SpatialOffset` | 4‑byte chr count + `SpatialHeader{chr_off, feat_count, data_off}` list + per‑chr `SpatialFeatureRec{start, end, id_off, type_off}` arrays | variable |
-| `hdr.FastaIdxOffset` | 4‑byte chr count + `FastaIndexEntry{chr_off, _, offset}` list | 4 + chrCount×16 B |
-| `hdr.StringPoolOff` | Null‑terminated string pool — all label strings interned here | poolSize |
+|---|---|---|
+| 0 | Header: magic `HXBI`, version 2, section counts, section offsets, string pool offset and size | 88 B |
+| `EntriesOffset` | Entry hash table: `{hash uint64, value uint64}` per slot, `nextPow2(entryCount * 2)` slots | slots x 16 B |
+| after entry hash | Entry records: `{chr_off, start, end, strand_off, type_off, gene_off}` | entries x 24 B |
+| `FamiliesOffset` | Family hash table | slots x 16 B |
+| after family hash | Family records: `{tx_count, cds_count, exon_count, _, data_off}` | families x 24 B |
+| after family records | Family string references: `uint32` arrays for transcript, CDS, and exon IDs | variable |
+| `CoordsOffset` | Coord hash table, coord records, then exon and CDS `{start, end}` pairs | variable |
+| `SpatialOffset` | 4-byte chromosome count, `SpatialHeader{chr_off, feat_count, data_off}` list, then per-chromosome `SpatialFeatureRec{start, end, id_off, type_off}` arrays | variable |
+| `FastaIdxOffset` | 4-byte chromosome count, then `FastaIndexEntry{chr_off, _, offset}` list | 4 + chromosomes x 16 B |
+| `StringPoolOff` | Null-terminated string pool shared by all sections | pool size |
 
 ### Hash table design
 
-- **Hash function**: xxh3 64‑bit (via `github.com/zeebo/xxh3`); hash value 0 is remapped to 1 because `hash == 0` is the empty-slot sentinel
-- **Collision resolution**: Open addressing with linear probing
-- **Load factor**: ~50% (capacity = `nextPow2(count × 2)`)
-- **Empty slot**: `hash == 0`
-- **Slot value**: high 32 bits = array index, low 32 bits = string pool offset for collision verification
+- Hash function: xxh3 64-bit.
+- Hash value 0 is remapped to 1 because 0 marks an empty slot.
+- Collision resolution: linear probing.
+- Load factor: about 50 percent (`nextPow2(count * 2)` slots).
+- Empty slot: `hash == 0`.
+- Slot value: high 32 bits hold the record index, low 32 bits hold the string pool offset used to verify the key.
 
 ### Struct alignment
 
-All structs include explicit Go alignment padding fields (e.g. `_ uint32` before `uint64`). This ensures `binary.Write` and `unsafe.Pointer` casts use the same byte layout. `binary.Write` outputs packed field‑by‑field; the padding fields carry zero bytes to maintain 8‑byte alignment for subsequent `uint64` fields.
+The structs include explicit padding fields so `binary.Write` and `unsafe.Pointer` casts see the same layout. For example, `FastaIndexEntry` has a `_ uint32` before its `int64` offset, and `FamilyRecord` has a `_ uint32` before its `uint64` data offset. The padding fields carry zero bytes and keep the following 64-bit fields 8-byte aligned.
 
-The format is designed for in‑process use via `mmap` + `unsafe` pointer casts — **not** for cross‑language interchange. `Open()` validates every header‑derived section range against the file size once (overflow‑guarded arithmetic), so a truncated or hand‑corrupted `.bin` is rejected at open time and the hot lookup paths can never read out of bounds; the header is copied to the heap before any munmap path, so error formatting never dereferences unmapped memory. Corruption regressions: `internal/index/reader_corrupt_test.go` (truncation, field corruption, exhaustive header byte‑flip).
+The format is for in-process use through mmap and unsafe pointer casts. It is not a cross-language interchange format.
+
+`Open` validates every header-derived section range against the file size before any lookup. The arithmetic is overflow-guarded. A truncated or hand-corrupted file therefore fails at open, not in a hot path. The header is copied to the heap before any error branch can call `Close` and unmap the pages. Corruption tests cover truncation, field corruption, and exhaustive header byte flips in `internal/index/reader_corrupt_test.go`.
 
 ### Reader internals
 
-```
+```text
 Open(path)
-  → os.Stat → unix.Mmap(PROT_READ, MAP_SHARED)
-  → Header (*Header)(unsafe.Pointer(&data[0]))
-  → verify magic + version
+  -> os.Stat
+  -> unix.Mmap(PROT_READ, MAP_SHARED)
+  -> copy Header to the heap
+  -> check magic and version
+  -> validate section ranges
 ```
 
-The binary reader implements the `transcript.IndexReader` interface, which bridges JSON and binary backends:
+The reader implements `transcript.IndexReader`:
 
 | Method | Returns | Used by |
-|--------|---------|---------|
+|---|---|---|
 | `LookupEntry(id)` | `(*Entry, bool)` | `LookupWithIndex` |
-| `LookupFamily(gene)` | `(*Family, bool)` | `LookupWithIndex` (gene family) |
-| `LookupCoords(id)` | `(*CoordRegions, bool)` | `LookupWithIndex` (exon/CDS coords) |
+| `LookupFamily(gene)` | `(*Family, bool)` | `LookupWithIndex` |
+| `LookupCoords(id)` | `(*CoordRegions, bool)` | `LookupWithIndex` |
 | `SpatialSearch(chr, start, end)` | `(*SpatialHits, error)` | `SpatialLookup` |
 | `FastaOffset(chr)` | `(int64, bool)` | `extractSequence` |
-| `FastaIndexMap()` | `map[string]int64` | `extractSequence` (bulk) |
+| `FastaIndexMap()` | `map[string]int64` | `extractSequence` |
 | `Close()` | `error` | Resource cleanup |
 
-`LoadIndexAuto` returns either a `*index.Reader` (binary) or a `*jsonIndexReader` (JSON), both implementing this interface. `LookupWithIndex` and `SpatialLookup` accept `IndexReader`, making them format‑agnostic.
+`LoadIndexAuto` returns either `*index.Reader` or `*jsonIndexReader`. Both satisfy the interface, so `LookupWithIndex` and `SpatialLookup` do not depend on the storage format.
 
 ## Concurrency model
 
+```text
+HTTP server
+  POST /api/v1/jobs       -> jobCh (buffered channel)
+  GET  /jobs/{id}/events  -> job.Subscribe() -> SSE stream
+  DELETE /jobs/{id}       -> job.Cancel()
+
+Worker pool
+  worker 1 .. worker N <- jobCh -> BLAST+ process
+  N = actual concurrency
+  queue capacity = blast.max_jobs
 ```
-┌─ HTTP Server ─────────────┐
-│  chi router                │
-│  POST /jobs ───────┼──→ jobCh (buffered channel)
-│  GET /jobs/:id/events ┼──→ job.Subscribe() → SSE stream
-│  DELETE /job ────────┼──→ job.Cancel()
-└───────────────────────┘
-        │
-┌─ Worker Pool ──────────────────────────────────┐
-│  [worker 1] ← jobCh  → BLAST exec              │
-│  [worker 2] ← jobCh  → BLAST exec              │
-│  [worker N] ← jobCh  → BLAST exec              │
-│                                                  │
-│  Pool size = min(max_jobs, CPU/mem_adaptive)    │
-│  Queue capacity = max_jobs                      │
-│  429 when queue full                            │
-└─────────────────────────────────────────────────┘
-```
+
+`Submit` sets the job to `pending`, sends it to the channel, then sets `queued` and records its queue position. If the channel is full, `Submit` returns an error and the API responds with `429`. A submit that arrives after `Stop` begins returns `503`.
 
 ### Resource adaptation
 
-At startup, the system probes CPU cores and available RAM to compute a safe concurrency level:
+At startup the server computes:
 
-- `cpu_limit = max(1, NumCPU / cpu_per_job)`
-- `memory_limit = <2GB→2, <4GB→5, default 20` (macOS/non‑Linux: always 4)
-- `actual = min(max_jobs, cpu_limit, memory_limit)`
-
-This prevents OOM on low-resource machines. The `/health` endpoint reflects the degraded state.
-
-### Multi‑database BLAST
-
-When `POST /api/v1/jobs` receives `dbs: ["nr", "nt", "refseq"]`, a single Job is created. The worker loops over `job.Databases` sequentially:
-
+```text
+cpu_limit    = max(1, NumCPU / cpu_per_job)
+memory_limit = available RAM < 2 GB  -> 2
+               available RAM < 4 GB  -> 5
+               otherwise             -> 20
+actual       = min(max_jobs, cpu_limit, memory_limit)
 ```
-for _, dbName := range job.Databases {
-    job.SetProgress("BLAST against " + dbName + " ...")
-    hits, err := p.execFn(ctx, job, dbName)
-    if err != nil {
-        errs = append(errs, {dbName, err.Error()})
-        continue  // don't block remaining databases
-    }
+
+Linux reads `MemAvailable` from `/proc/meminfo`. Other operating systems use a fixed memory limit of 4. The worker pool is created with `actual` workers and a queue capacity of `max_jobs`.
+
+The `/health` handler recomputes resources on each request, while the pool size stays fixed at startup. If available memory changes, the reported capacity can differ from the number of running workers.
+
+### Multiple databases
+
+When a job lists several databases, one worker processes them in order:
+
+```text
+for each dbName in job.Databases:
+    set progress "BLAST against <dbName> ..."
+    hits, err := execFn(ctx, job, dbName)
+    if err:
+        append DatabaseError{dbName, err}
+        continue
     tag each hit with dbName
-    collect hits
-}
+    append hits to the merged list
 ```
 
-Results are merged, sorted by `total_score` descending, and trimmed to top 200. Partial errors are included in `BlastResult.Errors` and displayed at the top of the results view.
+The API removes duplicate database names before it creates the job. After the loop, the worker sorts all hits by `total_score` and keeps the top 200. Each database contributes at most 20 hits.
+
+If some databases fail and at least one succeeds, the result includes `errors` and the job succeeds. If every database fails, the job becomes `failed` and the job `error` field contains the combined message. A cancelled job records a `cancelled` error for each database it did not run.
 
 ## Job lifecycle
 
+```text
+Submit -> pending -> queued -> running -> success
+                                      -> failed
+         -> cancelled
 ```
-Submit → Pending → Queued → Running → Success / Failed
-                            ↘ Cancelled (soft cancel)
-```
 
-**Soft cancel**: Does NOT kill the BLAST process (no SIGKILL). Sets an `atomic.Bool` flag. When BLAST completes, the worker checks the flag — if set, discards the result and marks the job `cancelled`. This avoids orphaned temp files and zombie processes.
+A running job gets a 2-hour `context.WithTimeout`. `exec.CommandContext` passes that context to BLAST+, so the process is killed when the context expires or is cancelled.
 
-**Timeout**: Each job has a 2-hour `context.WithTimeout`. BLAST receives the context and is killed by the OS when it expires.
+Cancel is not a soft flag. `Job.Cancel` sets the cancellation flag and invokes the context cancel function. A queued job moves to `cancelled` immediately. A running BLAST process is terminated, and the worker marks the job `cancelled` after it observes the flag. The worker still records a cancellation error for databases it did not reach.
 
-**Cleanup**: A pruner goroutine in the worker pool runs every 10 minutes, removing terminal-state jobs from the in-memory registry once they pass `jobs.result_ttl_hours`. This bounds registry memory to ~24h of job history and keeps queue-position rescans O(recent jobs) instead of O(all-time jobs). There is no storage janitor: results are never persisted server-side (the former `internal/storage` + `internal/janitor` subsystem was removed as dead weight — see configuration → "Why there is no server-side storage layer").
+The worker sets the result before the terminal status. It clears `progress` on success or cancellation.
+
+The registry pruner runs every 10 minutes. It removes terminal jobs whose last update is older than `jobs.result_ttl_hours`. Running jobs are never pruned. The result payload itself is cleared earlier, when the first terminal snapshot is delivered.
+
+A job ID is the only credential on the job endpoints. IDs are 128-bit random values with the `hxb-` prefix.
 
 ## SSE streaming
 
-Job detail updates use Server-Sent Events with a subscriber pattern:
+Each SSE connection subscribes to a job:
 
-```
-Job.SetStatus() → job.notify() → push to all subscriber channels
-                                    │
-SSE handler ← subCh ←── Subscribe() ─┘
+```text
+Job.SetStatus / SetProgress / SetResult
+  -> job.notify()
+  -> every subscriber channel receives a wake-up
+  -> SSE handler reads a fresh JobSnapshot, marshals it, writes "data: ..."
 ```
 
-Each SSE connection creates a subscriber channel on the Job. Status changes push a message to all subscribers. When the job reaches a terminal state, the SSE handler calls `ClearResult()` and returns. The frontend opens SSE automatically on job creation via `EventSource`, with exponential backoff reconnection (1s→2s→…→30s, max 10 retries). After 10 failures, it switches to IndexedDB polling (5s interval) — it never queries the server directly.
+The server sends a snapshot on every change, including result publication. The worker calls `SetResult` before `SetStatus(Success)`, so the terminal snapshot contains the result.
+
+The stream ends on `success`, `failed`, or `cancelled`. The handler calls `ClearResult` after it sends the terminal snapshot. `GET /api/v1/jobs/{id}` does the same after a terminal response. The payload is not retained for a later reader.
+
+The frontend uses `EventSource`. Transient connection drops are left to the browser's native reconnect. When the stream reaches `CLOSED`, the client retries with exponential backoff starting at 2 seconds and capped at 30 seconds. After 10 failed retries it stops using SSE and reads the cached job from IndexedDB every 5 seconds. It never polls the server for job status.
+
+## HTTP middleware
+
+The middleware chain runs in this order:
+
+1. Request ID
+2. Real IP
+3. Request logger
+4. Panic recovery
+5. CORS
+6. Rate limiter
+
+CORS allows any origin and the methods `GET`, `POST`, `DELETE`, and `OPTIONS`. The rate limiter trusts `X-Forwarded-For` as sent.
+
+The logger copies the request body and buffers the response body. For a long-lived SSE connection, that buffer grows for the life of the stream. The buffered response body is not used for anything beyond status logging.
 
 ## BLAST parameter whitelist
 
-At startup, HelixBLAST runs `blastn -help`, `blastp -help`, `blastx -help`, `tblastn -help`, `tblastx -help` and parses the output to build a whitelist of valid parameters. If none can be parsed the server **refuses to start** (`Fatalf`) — a host where BLAST+ cannot even print help is not a host that can run BLAST, and a fail-open whitelist would silently drop the parameter validation the whole subsystem exists for. User-supplied `advanced_params` are validated against this list at **job submission time** — unknown parameters are rejected with `400 Bad Request` and the job never enters the queue (the worker re-checks before execution).
+At startup the server runs `blastn -help`, `blastp -help`, `blastx -help`, `tblastn -help`, and `tblastx -help`, then parses the flag names from the output. If no output can be parsed, the server exits with a fatal error. It does not start with an empty whitelist.
 
-The whitelist deliberately contains **every parameter the installed BLAST+ actually supports** — tuning is a user right, not a privileged operation. The single exception is a small server-reserved set (`query`, `db`, `outfmt`, `num_threads`, `out`) that `BuildCommand` injects itself: BLAST+ applies last-wins for duplicated flags, so a user passing one of those names would silently override server-controlled behavior. Command-line injection is prevented independently of the whitelist: keys and values are sanitized against shell metacharacters, and `exec.Command` never goes through a shell.
+The whitelist excludes these server-controlled flags:
 
-Default BLAST parameters when not overridden: `-max_target_seqs 5000`, `-evalue 10`. The parser further limits results to 20 hits per database (merged to top 200 across databases).
+- `query`
+- `db`
+- `outfmt`
+- `num_threads`
+- `out`
+
+BLAST+ applies the last value when a flag appears twice. A user-supplied value for one of these flags could override the server's query file, database, output format, thread count, or output path.
+
+Every other flag that the installed BLAST+ reports is allowed. User parameters are checked at submission and again in the worker before execution. Unknown keys return `400` and never enter the queue.
+
+The server pins the query file, database, output format, and thread count. The tunable defaults are `-max_target_seqs 5000` and `-evalue 10`. The parser keeps at most 20 hits per database; the pool merges and trims to 200 hits overall.
 
 ## Rate limiting
 
-Token bucket algorithm: 100 requests/second per IP, burst capacity 120. Returns `429 Too Many Requests` with `Retry-After: 5`. Inactive IPs are cleaned from the map every 5 minutes.
+The server uses a token bucket per IP address:
+
+- Rate: 100 requests per second.
+- Burst: 120 requests.
+- Rejected request: `429 Too Many Requests` with `Retry-After: 5`.
+- Cleanup: a sweep every 5 minutes removes entries idle for more than 10 minutes.
+
+The limiter applies to every route, including static assets and SSE.
 
 ## Shutdown
 
-Graceful shutdown on SIGINT/SIGTERM (order as implemented in `cmd/server/main.go`):
+On `SIGINT` or `SIGTERM`:
 
-1. HTTP server graceful shutdown (5s timeout) — stop accepting, drain in-flight requests
-2. `pool.Stop()`: cancel all running/queued jobs, close the queue, wait for workers to finish (30s timeout, then force)
-3. Exit via `os.Exit(0)` — this skips the deferred fsnotify stop; harmless at process end, but worth cleaning up if shutdown ever needs to flush state
+1. The HTTP server stops accepting connections and drains in-flight requests for up to 5 seconds.
+2. `pool.Stop` cancels running and queued jobs, closes the queue, and waits up to 30 seconds for workers.
+3. The process exits with `os.Exit(0)`.
+
+The exit skips deferred cleanup, including the database watcher's `Stop`. That is harmless at process exit.
 
 ## Frontend
 
-### Routes & cross-page data flow
+### Routes and URL state
 
-Layout route (`AppLayout`: header, degraded banner, `<Outlet/>`) hosts three pages:
+`AppLayout` renders the header, the degraded banner, and the active page.
 
-| Path | Page | URL params |
+| Path | Page | URL parameters |
 |---|---|---|
-| `/` | → redirect to `/blast` | — |
-| `/blast` | BLAST search: input panel, job list, results/alignment, auto spatial panel | `?job=<id>` — selected job |
-| `/transcript` | Transcript lookup (single-db): regions + gene family navigation | `?db=<name>&id=<tx>` |
-| `/settings` | Language / notifications / cache | — |
-| anything else | → redirect to `/blast` | — |
+| `/` | Redirect to `/blast` | none |
+| `/blast` | BLAST search, job list, results, alignment, spatial panel | `?job=<id>` selects a cached job |
+| `/transcript` | Transcript lookup and region view | `?db=<name>&id=<id>` |
+| `/settings` | Language, appearance, notifications, cache | none |
+| any other path | Redirect to `/blast` | none |
 
-Cross-page flow is encoded in **URL search params** — no shared state store. Consequences:
+Cross-page state lives in URL search parameters, not in a shared store.
 
-- Navigating from a BLAST hit to its transcript (`?db=&id=`) does **not** destroy the BLAST page context; going back restores the selected job instantly from IndexedDB via `?job=`.
-- Transcript lookups are bookmarkable/shareable URLs that survive refresh (the server-side SPA fallback serves the shell for any extensionless path).
-- Clicking gene-family members or spatial feature IDs rewrites params, so browser back/forward walks the lookup history.
-- **Spatial search is an auxiliary view of BLAST results, not a standalone page.** When a hit is selected and its database has `is_chromosome_db: true`, the BLAST page resolves the hit's **best-HSP-anchored cluster span** — the best HSP's subject interval, merged with other HSPs within a 20 kb gene-scale gap (non-transitively) — and renders the **overlapping gene(s) plus the nearest upstream/downstream genes** below the alignment (`SpatialPanel`). The response is gene-centric: mRNA/CDS/exon records are excluded (they nest under genes; clicking a gene ID opens Transcript Lookup with the full family). Feature IDs link into `/transcript?db=&id=`. It never appears for non-chromosome databases. Why clustering: low-complexity queries accumulate noise HSPs megabases apart on the same subject; a union-across-all-HSPs span once produced an 87 Mb window and 24,466 features. The API additionally rejects windows over 1 Mb with `400` as a server-side guard.
+- A BLAST hit links to `/transcript?db=<hit database>&id=<feature ID>`.
+- Going back restores the BLAST page with `?job=<id>` from the history entry and loads the job from IndexedDB.
+- Transcript URLs are bookmarkable and survive a refresh.
+- Gene-family links and spatial gene links rewrite the `id` parameter, so browser history walks the lookup chain.
+- Alignment-level transcript links are hidden for chromosome databases; the spatial panel is the intended path there.
+- Changing the database on the transcript page drops the `id` parameter.
 
-### Serving & SPA fallback
+### Serving and SPA fallback
 
-API routes (`/api/v1/*`, `/health`) are registered **before** the static catch-all and never reach it.
-
-The catch-all (`serveFrontend` in `internal/api`) implements a self-maintaining fallback — deliberately **no hand-written exclusion list**:
+API routes are registered before the static catch-all, so they never reach it.
 
 | Request | Behavior |
 |---|---|
-| Path maps to a real embedded file | Served verbatim (JS/CSS bundles, favicon) |
-| Extensionless path with no backing file | Rewritten to `/` → serves `index.html`; react-router takes over |
-| Path carries a file extension but has no backing file | Genuine `404` |
+| Path maps to an embedded file | Served as is, with its content type |
+| Extensionless path with no embedded file | Rewritten to `/` and served `index.html`; the client router takes over |
+| Path with a file extension and no embedded file | `404` |
+| Path whose extension is `.go` | `404` |
 
-Why this shape:
-
-- `/api/*` and `/health` are excluded by route precedence, not by a list — new API endpoints inherit this automatically.
-- Any extensionless URL falls back to the app shell, so adding a client route needs zero server changes.
-- Broken asset URLs intentionally return 404 instead of HTML: they fail loudly in devtools instead of silently parsing HTML as JavaScript.
-- **Corollary / the one rule to keep**: client-side routes must never contain a file extension.
+The `.go` guard exists because `//go:embed *` also matches this package's source files. The catch-all has no other exclusion list: new API routes inherit precedence automatically, and a new client route needs no server change. The corollary is that client routes must not contain a file extension.
 
 ### Tech stack
 
-| Component | Library | Why |
-|-----------|---------|-----|
-| Framework | React 18 | Declarative UI, mature ecosystem |
-| Build | Vite 6 | ESM-native, fast HMR, tree-shaking |
-| UI | Ant Design 6 | Mature component library, form/table/tag/card |
-| Data fetching | @tanstack/react-query | Cache dedup, background GC, SSE + IndexedDB for jobs |
-| State push | EventSource (SSE) | Server-push for job status, auto-reconnect |
-| Client storage | IndexedDB | Browser-local persistence (24h TTL), survives restarts |
+| Component | Library | Role |
+|---|---|---|
+| UI | React 18.3 | Component model |
+| Build | Vite 6 | Development server, bundling, tree-shaking |
+| Components | Ant Design 6.5 | Forms, tables, tags, cards, layout |
+| Server data | TanStack Query 5 | Health, database list, request cache |
+| Job updates | `EventSource` (SSE) | Server push for job progress |
+| Client storage | IndexedDB | Job history and settings |
 
-### Design system (Bio Minimal)
+### Design system
 
-All visual decisions live in `web/src/theme.ts` + `web/src/themeMode.tsx` as Ant Design v6 design tokens — no ad-hoc hex values scattered through components. The theme follows Ant Design's "flat-first" language: surfaces carry hierarchy via borders and tonal contrast, not heavy shadows.
+Visual decisions live in `web/src/theme.ts` and `web/src/themeMode.tsx` as Ant Design v6 tokens. Theme tokens are the rule; a few caption colors in components are still literal values.
 
-- **Brand seed**: teal drives `colorPrimary`/`colorInfo`/`colorLink` — `#0e7490` (light) / `#2dd4bf` (dark, brightened for contrast on the midnight surface); AntD's algorithm derives all hover/active/tint steps. Status seeds brighten in dark (`#059669`→`#10b981`, etc.).
-- **Neutrals**: derived by AntD's `defaultAlgorithm`/`darkAlgorithm`, consumed in components via `theme.useToken()` (`colorText*`, `colorBorder*`, `colorFillQuaternary`, `colorPrimary`) so they flip automatically. The dark theme sets `colorBgBase=#0b1220` (deep slate, not pure black) and `colorTextBase=#e5e7eb` (soft white).
-- **Radius / type**: base radius 8 (cards 12), Google Sans Flex + Noto Sans SC for UI, Fira Code for all sequence/code surfaces (`fontFamilyCode` seed).
-- **Nucleotide colors** (`getNucleotideColors(mode)`): IGV-style categorical palette — A green, C blue, G amber, T red, U pink, gaps slate — with a **brightened dark variant** to keep ≥4.5:1 on dark surfaces. Reserved for **data only** (alignments, region FASTA), never UI chrome.
-- **`SequenceText`** (`web/src/lib/sequenceColor.tsx`): color-codes a sequence string only when it matches the nucleotide alphabet and is under 5 000 bp; protein/ambiguous/long sequences render as plain text. Consecutive same-color runs are merged into one `<span>` to bound DOM size. Reads the active palette via the `useNucleotideColors()` hook.
-- **No emoji as icons**: the brand mark is an inline SVG double helix (header + favicon).
+- Brand seed: teal `#0e7490` in light mode and `#2dd4bf` in dark mode. It drives `colorPrimary`, `colorInfo`, and `colorLink`.
+- Status seeds: green, amber, and red, with brighter dark-mode variants.
+- Neutrals: derived by Ant Design's `defaultAlgorithm` and `darkAlgorithm`, then read through `theme.useToken()`. The dark theme sets `colorBgBase` to `#0b1220` and `colorTextBase` to `#e5e7eb`.
+- Shape: 8 px base radius, 12 px cards. The UI font stack is Google Sans Flex with Noto Sans SC fallback. Code and sequence surfaces use Fira Code.
+- Nucleotide colors: IGV-style A green, C blue, G amber, T red, U pink, and a slate gap color. Each has a dark variant.
+- `SequenceText` colors a string only when it contains nucleotide, IUPAC ambiguity, or gap characters and is at most 5,000 bases. Ambiguity codes use the muted ambiguous tone. Protein, other characters, and longer strings render as plain text. Consecutive same-color runs become one `<span>`.
+- Icons: the brand mark is an inline SVG double helix. The favicon is a data-URI SVG. The interface uses no emoji as icons.
 
 ### Dark mode
 
-Preference model is `system | light | dark` (default `system`), managed by `ThemeModeProvider` (`web/src/themeMode.tsx`):
+The preference is `system`, `light`, or `dark`, and defaults to `system`. `ThemeModeProvider` stores it in `localStorage` under `helixblast_theme`.
 
-- **Storage**: `localStorage` key `helixblast_theme` (mirrors the language-preference pattern — a visual setting needed before paint).
-- **No FOUC**: a tiny inline script in `index.html` resolves the stored preference against `prefers-color-scheme` and sets `data-theme` + `color-scheme` + root background before React mounts.
-- **Live system tracking**: when preference is `system`, a `matchMedia` listener flips the resolved mode when the OS theme changes.
-- **Single algorithm switch**: `getThemeConfig(resolved)` swaps `defaultAlgorithm`↔`darkAlgorithm`; because every neutral is read through `theme.useToken()`, all surfaces/text/borders flip with zero per-component branching. Only brand + nucleotide palettes are explicitly mode-keyed.
-- **Entry points**: a sun/moon toggle button in the header (switches to the explicit opposite of the current resolved mode) and a System/Light/Dark `Segmented` control in Settings → Appearance.
+An inline script in `index.html` resolves the preference before React mounts and sets `data-theme`, `color-scheme`, and the root background. That avoids a flash of the wrong theme. When the preference is `system`, a `matchMedia` listener updates the resolved mode when the operating system theme changes.
 
-### IndexedDB‑first data flow
+`getThemeConfig(resolved)` swaps `defaultAlgorithm` for `darkAlgorithm`. Components read neutrals through `theme.useToken()`, so they do not branch on the mode. The brand and nucleotide palettes have explicit light and dark values.
 
-The browser's IndexedDB is the **sole source of truth** for all job state. The server holds no results after SSE delivery.
+The header has a sun or moon toggle. The Settings page has a System, Light, Dark control under Appearance.
 
-```
-Submit POST /jobs
-  → res.job_id
-  → saveJobMeta(idb)           ← save {job_id, status:"queued", ...}
-  → reloadLocalJobs(idb)       ← refresh UI list
-  → setSelectedJobId
-  → loadCachedJob(idb)          ← guard: if terminal+result, skip SSE
-  → EventSource(/jobs/{id}/events)  ← SSE auto-opens
+### IndexedDB-first data flow
+
+IndexedDB is the source of truth for job state in the browser.
+
+```text
+Submit POST /api/v1/jobs
+  -> response {job_id, status, queue_pos}
+  -> saveJobMeta(idb)
+  -> reloadLocalJobs(idb)
+  -> set ?job=<id>
+  -> loadCachedJob(idb)
+  -> if terminal with result, skip SSE
+  -> otherwise open EventSource
 
 SSE stream
-  → queued → running → success
-  → saveJobFull(idb)           ← overwrite with full result
-  → onTerminal → reloadLocalJobs(idb)
-  → server: ClearResult()      ← free memory
+  -> queued, running
+  -> terminal snapshot with result
+  -> saveJobFull(idb)
+  -> reloadLocalJobs(idb)
+  -> server clears its result
 
 Page reload
-  → loadJobs(idb)
-  → mergedJobs = savedJobs     ← no server fetch
-  → click job → loadCachedJob(idb) → guard → SSE or skip
+  -> loadJobs(idb); expired entries are deleted
+  -> render the list from IndexedDB
+  -> select a job; loadCachedJob(idb)
+  -> if cached result exists, skip SSE
 ```
 
-**No polling.** The job list is built entirely from IndexedDB. SSE delivers real-time status for the selected job. The `GET /api/v1/jobs` endpoint has been removed — it no longer exists.
-
-**No cross-device sharing.** Each browser's IndexedDB is isolated. A job submitted on device A is invisible on device B. The `api.fetchJob(jobId)` fallback has been removed — if a job isn't in local IndexedDB, it doesn't exist for that client.
+There is no server-side job list and no polling of the server. A job submitted in one browser is invisible in another. Non-job settings live in the same object store with type `setting` and are exempt from the 24-hour TTL.
 
 ### SSE resume and fallback
 
-```
-SSE onerror
-  → check react‑query cache for terminal → exit
-  → retry < 10: exponential backoff (1s → 2s → ... → 30s)
-  → retry > 10: switch to IndexedDB polling
-                 → loadCachedJob(idb) every 5s
-                 → if terminal+result: stop, saveFull, reloadList
-                 → never queries server
-```
-
-### Server‑side result lifecycle
-
-```
-worker: SetResult → SetStatus(Success) → notify()
-SSE:    send(snap) → Flush → snap.Status terminal? → ClearResult()
-        ClearResult sets job.Result = nil — memory freed immediately
+```text
+EventSource onerror
+  -> if the stream is not CLOSED, let the browser reconnect
+  -> if CLOSED and the cached job is terminal, stop
+  -> retry at most 10 times: 2s, 4s, 8s, ... capped at 30s
+  -> after 10 failed retries, read IndexedDB every 5s
+  -> never request job status from the server
 ```
 
-`SetResult` is called **before** `SetStatus(Success)` to ensure the SSE snapshot includes the result. `ClearResult()` is called after the SSE handler confirms delivery (either on initial `send()` or on subscriber notification). The `GET /api/v1/jobs/{id}` handler also calls `ClearResult()` after serving the snapshot, for API consumers.
+### Server-side result lifecycle
 
-### Job list architecture (removed)
+```text
+worker: SetResult -> SetStatus(success) -> notify
+SSE:    send snapshot -> flush -> terminal? -> ClearResult
+GET:    write snapshot -> terminal? -> ClearResult
+```
 
-The frontend previously merged a server‑side job list (`GET /api/v1/jobs`) with IndexedDB cache and ran a 3s polling loop for active jobs. This has been removed in favor of the IndexedDB‑only model above.
+`SetResult` runs before `SetStatus` so a snapshot cannot report success with a missing result. `ClearResult` sets the job's result to nil. The job record, status, and timestamps remain until the TTL pruner removes them.
 
 ### Spatial search
 
-When a BLAST database uses chromosome sequences (`is_chromosome_db: true`), clicking a hit triggers `/api/v1/spatial` with the hit's subject range against a pre-built interval index in the GFF3 data. The index maps each chromosome to a start-sorted array of features (gene, mRNA, CDS, exon). `SpatialSearch` binary-searches the upper bound, then makes **one bounded backward pass** to collect overlapping features and the nearest upstream flank, with the downstream flank read directly at the boundary — O(log n + window) time, ~700 B and ~10 allocations per query regardless of chromosome size (vs the legacy whole-chromosome copy: O(n) time, ~90 B × features). The 8 Mb backward window assumes no gene exceeds that length (documented constant `spatialBackScan`). Only returned features get their ID/Type strings materialized from the string pool. Clicking any gene/transcript/CDS ID jumps to Transcript Lookup to view the full sequence.
+The spatial index stores gene, mRNA, CDS, and exon records sorted by start. The API returns only genes.
+
+When a BLAST hit belongs to a database with `is_chromosome_db: true`, the frontend builds a query range from the hit. It starts with the first HSP returned by BLAST and adds later HSPs that fall within 20 kb of the current span. Each added HSP can extend the span, so a chain of HSPs can grow the window; the API's 1 Mb cap is the hard bound.
+
+`SpatialSearch` binary-searches the start-sorted array, then scans backward within an 8 Mb window for overlapping genes and the nearest upstream gene. It reads forward for the first downstream gene. The backward window assumes no gene is longer than 8 Mb. Only returned features keep their decoded ID and type strings; the reader does decode the type of each candidate record while it filters for genes.
+
+The response carries full indexed coordinates, never a clipped span. A gene that overlaps the query at one base is returned with its complete start and end.
 
 ### State management
 
-The app uses local React state (`useState`) + react‑query cache for server data (health, databases, job detail). No Redux, no Zustand. The job list is managed via `useState(savedJobs)` backed by IndexedDB — not react‑query.
+The app uses local React state and the TanStack Query cache for server data. It does not use Redux or Zustand. The job list is `useState` backed by IndexedDB, not a query cache.
