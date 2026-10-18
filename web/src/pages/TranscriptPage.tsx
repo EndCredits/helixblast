@@ -20,6 +20,7 @@ import { useDatabases } from '../hooks/useJobs'
 import type { TranscriptResult } from '../api/client'
 import { lookupTranscript } from '../api/client'
 import SequenceText from '../lib/sequenceColor'
+import { sliceTranscriptRegions } from '../lib/transcriptRegions'
 import { useCodePanelStyle } from '../themeMode'
 
 const { Title, Text } = Typography
@@ -174,23 +175,12 @@ export default function TranscriptPage() {
               />
 
               {(() => {
-                const upstreamLen = transcriptResult.start - transcriptResult.scan_start
-                const up5 = transcriptResult.sequence.slice(0, upstreamLen)
-                const up2 = up5.slice(Math.max(0, upstreamLen - 2000))
-                const geneSeq = transcriptResult.sequence.slice(upstreamLen)
-                const exons = transcriptResult.regions?.exons || []
-                const cdss = transcriptResult.regions?.cdss || []
-
-                const extractRegion = (seq: string, regionStart: number, regionEnd: number) =>
-                  seq.slice(Math.max(0, regionStart - transcriptResult.start), regionEnd - transcriptResult.start + 1)
-
-                const mrna = exons.map(e => extractRegion(geneSeq, e.start, e.end)).join('')
-                const cds = cdss.map(c => extractRegion(geneSeq, c.start, c.end)).join('')
+                const { upstream5kb: up5, upstream2kb: up2, geneBody, mrna, cds } = sliceTranscriptRegions(transcriptResult)
 
                 const regionPanels = [
                   { label: t('home.transcript.regions.up5'), seq: up5, len: up5.length },
                   { label: t('home.transcript.regions.up2'), seq: up2, len: up2.length },
-                  { label: t('home.transcript.regions.geneBody', { len: geneSeq.length }), seq: geneSeq, len: geneSeq.length },
+                  { label: t('home.transcript.regions.geneBody', { len: geneBody.length }), seq: geneBody, len: geneBody.length },
                   { label: t('home.transcript.regions.mrna', { len: mrna.length }), seq: mrna, len: mrna.length },
                   { label: t('home.transcript.regions.cds', { len: cds.length }), seq: cds, len: cds.length },
                 ].filter(r => r.len > 0)

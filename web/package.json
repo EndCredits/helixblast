@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "lint": "tsc -b --noEmit"
+    "lint": "tsc -b --noEmit",
+    "test": "tsc src/lib/transcriptRegions.ts --outDir .test-dist --rootDir src --target ES2020 --module ESNext --moduleResolution bundler --skipLibCheck --noEmit false && node --test tests/transcriptRegions.test.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^6.3.2",
