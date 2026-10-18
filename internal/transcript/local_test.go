@@ -117,6 +117,17 @@ func TestExtractRange_MissingChromosome(t *testing.T) {
 	}
 }
 
+func TestExtractRange_CRLFHeaderWithoutOffset(t *testing.T) {
+	path := writeTemp(t, "crlf.fa", ">Chr01\r\nACGTACGT\r\n")
+	got, err := extractRange(path, "Chr01", 1, 4, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "ACGT" {
+		t.Errorf("got %q, want ACGT", got)
+	}
+}
+
 func TestExtractRange_FinalHeaderNoNewline(t *testing.T) {
 	// The last header without a trailing newline must be recognized (the
 	// chromosome exists) — requesting bases yields "range not found", not a

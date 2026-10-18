@@ -417,7 +417,7 @@ func (x *extractor) feed(ch byte) {
 
 func (x *extractor) feedHeader(ch byte) {
 	if !x.headerDone {
-		if ch == ' ' || ch == '\t' {
+		if ch == ' ' || ch == '\t' || ch == '\r' {
 			x.headerDone = true
 			return
 		}
