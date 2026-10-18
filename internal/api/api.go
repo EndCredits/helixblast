@@ -9,15 +9,15 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"strconv"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
-	"github.com/EndCredits/helixblast/internal/blast"
 	"github.com/EndCredits/helixblast/embed"
+	"github.com/EndCredits/helixblast/internal/blast"
 	"github.com/EndCredits/helixblast/internal/config"
 	custommw "github.com/EndCredits/helixblast/internal/middleware"
 	"github.com/EndCredits/helixblast/internal/transcript"
@@ -459,27 +459,17 @@ func (s *Server) handleTranscriptLookup(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if result.Sequence == "" && s.config.Database.WorkerURL != "" && dbEntry.Transcript.FastaFile == "" && dbEntry.Transcript.FastaDir == "" {
-		seq, err := s.fetchSequenceFromWorker(dbEntry, result)
-		if err != nil {
+		if err := s.loadSequenceFromWorker(dbEntry, result); err != nil {
 			jsonError(w, http.StatusBadGateway, fmt.Sprintf("worker sequence fetch failed: %v", err))
 			return
 		}
-		result.Sequence = seq
-		result.ScanStart = result.Start - 5000
-		if result.ScanStart < 1 {
-			result.ScanStart = 1
-		}
-		result.ScanEnd = result.End
 	}
 
 	jsonResponse(w, http.StatusOK, result)
 }
 
-func (s *Server) fetchSequenceFromWorker(dbEntry *config.DatabaseEntry, res *transcript.Result) (string, error) {
-	scanStart := res.Start - 5000
-	if scanStart < 1 {
-		scanStart = 1
-	}
+func (s *Server) loadSequenceFromWorker(dbEntry *config.DatabaseEntry, res *transcript.Result) error {
+	scanStart, scanEnd := transcript.ScanWindow(res.Start, res.End, res.Strand)
 
 	dbName := dbEntry.Name
 	if dbEntry.Transcript.Source != "" {
@@ -488,35 +478,41 @@ func (s *Server) fetchSequenceFromWorker(dbEntry *config.DatabaseEntry, res *tra
 
 	u, err := url.Parse(fmt.Sprintf("%s/sequence", s.config.Database.WorkerURL))
 	if err != nil {
-		return "", err
+		return err
 	}
 	q := u.Query()
 	q.Set("db", dbName)
 	q.Set("chr", res.Chromosome)
 	q.Set("start", fmt.Sprintf("%d", scanStart))
-	q.Set("end", fmt.Sprintf("%d", res.End))
+	q.Set("end", fmt.Sprintf("%d", scanEnd))
 	q.Set("strand", res.Strand)
 	u.RawQuery = q.Encode()
 
 	resp, err := http.Get(u.String())
 	if err != nil {
-		return "", fmt.Errorf("worker request: %w", err)
+		return fmt.Errorf("worker request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("worker returned %d: %s", resp.StatusCode, string(body))
+		return fmt.Errorf("worker returned %d: %s", resp.StatusCode, string(body))
 	}
 
 	var workerResp struct {
 		Sequence string `json:"sequence"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&workerResp); err != nil {
-		return "", fmt.Errorf("decode worker response: %w", err)
+		return fmt.Errorf("decode worker response: %w", err)
 	}
 
-	return workerResp.Sequence, nil
+	res.Sequence = workerResp.Sequence
+	res.ScanStart = scanStart
+	res.ScanEnd = scanEnd
+	if res.Sequence != "" {
+		res.ScanEnd = scanStart + len(res.Sequence) - 1
+	}
+	return nil
 }
 
 func (s *Server) localTranscriptLookup(dbEntry *config.DatabaseEntry, transcriptID string) (*transcript.Result, error) {

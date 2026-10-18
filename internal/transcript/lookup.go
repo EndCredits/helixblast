@@ -6,18 +6,33 @@ import (
 	"github.com/EndCredits/helixblast/internal/index"
 )
 
+const transcriptFlank = 5000
+
+// ScanWindow returns the genomic window to extract around a feature. For a
+// plus-strand feature the 5 kb upstream flank is below Start. For a
+// minus-strand feature it is above End, so the window is [Start, End+5kb].
+// Callers that read a partial window at a chromosome boundary should set
+// ScanEnd from the length actually extracted.
+func ScanWindow(start, end int, strand string) (int, int) {
+	if strand == "-" {
+		return start, end + transcriptFlank
+	}
+	scanStart := start - transcriptFlank
+	if scanStart < 1 {
+		scanStart = 1
+	}
+	return scanStart, end
+}
+
 func LookupWithIndex(idx IndexReader, dbName string, transcriptID string, fastaDir string, fastaFile string, fastaIndex map[string]int64) (*Result, error) {
 	entry, ok := idx.LookupEntry(transcriptID)
 	if !ok {
 		return nil, fmt.Errorf("ID %s not found in %s", transcriptID, dbName)
 	}
 
-	scanStart := entry.Start - 5000
-	if scanStart < 1 {
-		scanStart = 1
-	}
+	scanStart, scanEnd := ScanWindow(entry.Start, entry.End, entry.Strand)
 
-	seq, err := extractSequence(fastaDir, fastaFile, entry.Chr, scanStart, entry.End, entry.Strand, fastaIndex)
+	seq, err := extractSequence(fastaDir, fastaFile, entry.Chr, scanStart, scanEnd, entry.Strand, fastaIndex)
 	if err != nil {
 		return nil, fmt.Errorf("extract sequence: %w", err)
 	}
@@ -33,7 +48,11 @@ func LookupWithIndex(idx IndexReader, dbName string, transcriptID string, fastaD
 		GeneID:       entry.Gene,
 		Sequence:     seq,
 		ScanStart:    scanStart,
-		ScanEnd:      entry.End,
+		ScanEnd:      scanEnd,
+	}
+
+	if seq != "" {
+		result.ScanEnd = scanStart + len(seq) - 1
 	}
 
 	if regionCoords, ok := idx.LookupCoords(transcriptID); ok {
