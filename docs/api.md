@@ -264,19 +264,24 @@ If `index_path` is empty, the endpoint returns `503 Service Unavailable` before 
 
 If a local source is configured, the server does not fall back to the Worker. With only `fasta_dir`, a missing chromosome file produces a response with an empty `sequence`. With `fasta_file`, a missing chromosome returns `404`.
 
-`sequence` is the forward genomic window from `scan_start` to `scan_end`, reverse-complemented when `strand` is `-`. `scan_start` is the feature start minus 5,000, clamped at 1; `scan_end` is the feature end. The numeric fields stay genomic coordinates and do not index into the string for minus-strand features.
+`sequence` is the forward genomic window from `scan_start` to `scan_end`, reverse-complemented when `strand` is `-`.
 
-For plus-strand features, the first `start - scan_start` bases are the 5 kb upstream region. For minus-strand features, the window covers the low-coordinate side of the gene, which is the 3' side; after the reverse complement, the gene body comes first and that flank is at the end of the string.
+- Plus strand: `scan_start = max(1, start - 5000)`. `scan_end` is the last base actually extracted, normally `end`.
+- Minus strand: `scan_start = start`. The server requests `scan_end = end + 5000`; the returned value is the last base actually extracted, which can be lower at the chromosome end.
+
+The numeric fields stay genomic coordinates. They do not index into the string directly for minus-strand features.
+
+For both strands, the returned string is transcript-oriented: the 5 kb upstream flank comes first, then the gene body. For a plus-strand feature, the upstream length is `start - scan_start`. For a minus-strand feature, it is `scan_end - end`, and the gene body is reverse-complemented.
 
 The bundled frontend slices five regions from the string:
 
-- 5 kb upstream: `sequence[0 : start - scan_start]`
+- 5 kb upstream: the first `start - scan_start` bases on the plus strand, or `scan_end - end` bases on the minus strand
 - 2 kb upstream: the last 2 kb of the 5 kb upstream region
-- Gene body: `sequence[start - scan_start :]`
-- mRNA: exons spliced from the gene body
-- CDS: coding regions spliced from the gene body
+- Gene body: the next `end - start + 1` bases
+- mRNA: exons spliced in transcript order
+- CDS: coding regions spliced in transcript order
 
-That layout assumes the plus strand. For minus-strand features, the five labels do not match the biological direction.
+For a minus-strand feature, exons and CDS are ordered by descending genomic start, so the spliced sequence runs 5' to 3'.
 
 `regions` comes from the queried transcript when the index has coordinates for it. For a gene, CDS, or exon query, the server falls back to the first transcript in the gene family that has coordinates, so the exon and CDS arrays can belong to another transcript. `regions` and `related` are omitted when the index has no matching data.
 

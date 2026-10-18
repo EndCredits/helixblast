@@ -2,6 +2,15 @@
 
 Notable changes to HelixBLAST. The project does not publish versioned releases yet, so entries are grouped by date in `YYYY-MM-DD` form. The most recent changes appear first.
 
+## 2026-10-18
+
+### Fixed
+
+- Minus-strand transcript lookups now extract the 5 kb upstream flank from the high-coordinate side (`[start, end + 5000]`) instead of the low-coordinate side. `scan_end` reports the last base actually extracted, including at chromosome boundaries.
+- The transcript page slices upstream, gene body, mRNA, and CDS from the returned sequence using the strand. Exons and CDS are spliced in transcript order, descending by genomic start on the minus strand.
+- Alignment position labels step down for minus-strand query and subject HSPs instead of counting upward.
+- Added Go coverage for local and Worker minus-strand windows and Node tests for transcript region slicing and alignment position stepping.
+
 ## 2026-09-11
 
 ### Changed

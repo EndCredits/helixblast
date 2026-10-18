@@ -138,7 +138,12 @@ Behavior:
 - On the offset path, a trailing `\r` in the header is stripped before the name comparison. The linear path compares the header text as read, so a CRLF multi-FASTA without a usable offset may fail to match the chromosome name.
 - For a minus-strand feature, the server reverse-complements the extracted window.
 
-The scan window is `[start - 5000, end]`, clamped at position 1. It does not depend on the strand. For a minus-strand feature, that window is the low-coordinate side of the gene, which is the 3' side, not the 5' side.
+The extraction window depends on the strand:
+
+- Plus strand: `[max(1, start - 5000), end]`.
+- Minus strand: `[start, end + 5000]`.
+
+For a minus-strand feature, the high-coordinate side is the 5' side, so the window includes the 5 kb upstream flank. At a chromosome boundary, `scan_end` is the last base actually extracted.
 
 ## Cloudflare Worker mode
 
@@ -289,9 +294,11 @@ The server returns one sequence window per lookup. The frontend slices five regi
 4. mRNA, with exons stitched
 5. CDS, with coding regions stitched
 
-For plus-strand features, the window is `[start - 5000, end]`, and the first `start - scan_start` bases are the 5 kb upstream region. The gene body follows.
+For plus-strand features, the first `start - scan_start` bases are the 5 kb upstream region, and the gene body follows.
 
-For minus-strand features, the window is still `[start - 5000, end]`, then reverse-complemented. The string starts with the gene body and ends with the low-coordinate flank. The numeric `scan_start` and `scan_end` remain genomic coordinates. The bundled frontend applies the plus-strand slicing layout to both strands, so treat its region labels as approximate for minus-strand features.
+For minus-strand features, the server reverse-complements the window. The first `scan_end - end` bases are the 5 kb upstream region, and the gene body follows in transcript orientation. The numeric `scan_start` and `scan_end` remain genomic coordinates.
+
+The frontend splices exons and CDS in transcript order. For plus-strand features that is ascending genomic start; for minus-strand features it is descending genomic start.
 
 ## Spatial search
 
